@@ -185,7 +185,13 @@
     renderDie(1);
     $('#roll-btn').addEventListener('click', takeTurn);
     $('#stop-btn').addEventListener('click', function () {
-      if (confirm('게임을 끝내고 결과를 볼까요?')) { game.stop(); showResult(); }
+      // 브라우저 confirm()은 일부 미리보기 환경에서 막히므로 게임 안 창으로 확인
+      if (busy) return;
+      var m = openModal('<h2 class="card-title">게임을 끝내고 결과를 볼까요?</h2>' +
+        '<div class="btn-row"><button class="btn big primary" data-yes>결과 보기</button>' +
+        '<button class="btn big ghost" data-no>계속하기</button></div>', 'card');
+      m.querySelector('[data-yes]').addEventListener('click', function () { game.stop(); showResult(); });
+      m.querySelector('[data-no]').addEventListener('click', closeModal);
     });
     beginTurn();
   }
