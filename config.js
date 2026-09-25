@@ -24,10 +24,16 @@ window.GAME_CONFIG = {
   ],
   defaultMode: 'standard',
 
-  // 말 개수 (1 = 모둠 전체가 말 하나를 함께 움직임, 2 = 모둠을 두 짝으로 나눔)
+  // 모둠 수 = 한 화면에서 번갈아 움직이는 말 개수 (1모둠, 2모둠 ... 으로 표시)
   // 시뮬레이션(tests/simulate.js) 기준 40칸: 말 1개 약 10분, 2개 약 21분, 3개 약 31분
   defaultTokens: 2,
   maxTokens: 8,
+
+  // 판 배치: true면 게임마다 업로드·다운로드 위치와 칸별 카드 종류를 새로 배치(시작 화면에서 바꿀 수 있음)
+  randomBoard: true,
+
+  // 이 기기에 나온 카드 번호만 기억해 두고, 다음 판에는 안 나온 카드부터 뽑음 (개인정보 저장 없음)
+  rememberCards: true,
 
   // 모든 말이 도착하면 끝('all') / 한 말이라도 도착하면 끝('first')
   endWhen: 'all',
@@ -39,7 +45,7 @@ window.GAME_CONFIG = {
   discussionSeconds: 60,
 
   // 말이 한 칸 움직이는 시간(ms)
-  stepMs: 230,
+  stepMs: 420,
 
   // 색 (1980년대 뱀주사위놀이판 느낌: 노란 바탕 + 굵은 남색 테두리)
   theme: {

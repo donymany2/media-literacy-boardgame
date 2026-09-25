@@ -44,6 +44,15 @@
       }
     },
 
+    // 매번 새 판 규칙 (시작 화면에서 '매번 새 판'을 고르면 사용)
+    randomRules: {
+      jumps: { 40: { up: 3, down: 3 }, 25: { up: 2, down: 2 }, large: { up: 3, down: 3 }, small: { up: 2, down: 2 } },
+      teacher: { 40: 2, 25: 1, large: 2, small: 1 },
+      minGap: 3,                 // 업로드·다운로드 출발 칸끼리 최소 간격
+      span: [0.15, 0.3],         // 이동 거리: 판 크기의 15~30% (40칸이면 6~12칸)
+      fillWeights: { dilemma: 7, quiz: 4, chance: 4 }
+    },
+
     autoRules: {
       fill: true,
       deckPattern: FILL

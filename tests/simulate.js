@@ -41,13 +41,13 @@ console.log('카드팩: ' + (pack.meta && pack.meta.name) + ' (' + pack.cards.le
 console.log(warnings.length ? '경고:\n  - ' + warnings.join('\n  - ') : '카드팩 검사: 경고 없음');
 
 sizes.forEach(function (size) {
-  [[1, 6], [2, 6], [3, 6], [4, 6]].forEach(function (variant) {
-    var tokenCount = variant[0], dieFaces = variant[1];
+  [[1, 6], [2, 6], [3, 6], [4, 6], [2, 6, true]].forEach(function (variant) {
+    var tokenCount = variant[0], dieFaces = variant[1], randomBoard = !!variant[2];
     var total = { rolls: 0, cards: 0, teacher: 0, reflect: 0, trust: 0, judgment: 0, sec: 0 };
     var maxSec = 0;
     for (var g = 0; g < games; g++) {
       var rng = BG.makeRng(g + 1);
-      var game = new BG.Game({ pack: pack, size: size, tokens: tokenCount, dieFaces: dieFaces, rng: rng });
+      var game = new BG.Game({ pack: pack, size: size, tokens: tokenCount, dieFaces: dieFaces, randomBoard: randomBoard, rng: rng });
       var sec = 0, guard = 0;
       while (!game.over && guard++ < 1000) {
         var t = game.currentToken();
@@ -84,7 +84,7 @@ sizes.forEach(function (size) {
     }
     var per = function (v) { return (v / games).toFixed(1); };
     var perTok = function (v) { return (v / games / tokenCount).toFixed(1); };
-    console.log('\n[' + size + '칸, 말 ' + tokenCount + '개, 주사위 1~' + dieFaces + '] ' + games + '판');
+    console.log('\n[' + size + '칸, 말 ' + tokenCount + '개, 주사위 1~' + dieFaces + (randomBoard ? ', 매번 새 판' : '') + '] ' + games + '판');
     console.log('  말당 주사위 ' + perTok(total.rolls) + '회, 판당 카드 ' + per(total.cards) + '장, 선생님 ' + per(total.teacher) + '회, 되돌아보기 ' + per(total.reflect) + '회');
     console.log('  최종 점수(말 평균) 신뢰 ' + perTok(total.trust) + ', 판단력 ' + perTok(total.judgment));
     console.log('  예상 시간 평균 ' + (total.sec / games / 60).toFixed(1) + '분, 최대 ' + (maxSec / 60).toFixed(1) + '분');

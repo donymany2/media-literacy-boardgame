@@ -25,8 +25,10 @@
     this.endWhen = opts.endWhen || 'all';
     this.dieFaces = opts.dieFaces || 6;
     this.rng = opts.rng || Math.random;
-    this.board = BG.buildBoard(pack, opts.size);
-    this.decks = new BG.DeckSet(pack.cards || [], this.rng);
+    // randomBoard: 게임마다 업로드·다운로드 위치와 카드 종류를 새로 배치
+    var layout = opts.randomBoard ? BG.randomLayout(opts.size, (pack.board || {}).randomRules, this.rng) : null;
+    this.board = BG.buildBoard(pack, opts.size, layout);
+    this.decks = new BG.DeckSet(pack.cards || [], this.rng, opts.cardMemory);
     this.scoring = {
       trustStart: scoring.trustStart !== undefined ? scoring.trustStart : 10,
       judgmentStart: scoring.judgmentStart !== undefined ? scoring.judgmentStart : 0,

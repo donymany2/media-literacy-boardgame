@@ -49,13 +49,27 @@
    * 카드 종류(type)별로 더미를 따로 섞어 두고, 다 쓰면 다시 섞습니다.
    * 한 판에서 같은 카드가 연달아 나오지 않습니다.
    */
-  function DeckSet(cards, rng) {
+  /* memory(선택): 이전 판에 나온 카드 번호를 기억하는 저장소
+   *   load() → ['SRC-01', ...]  오래전에 나온 것부터 최근 순서
+   *   save(ids)
+   * 카드 더미를 만들 때 한 번도 안 나온 카드를 먼저, 그다음 오래전에 나온 카드 순으로 뽑음
+   * → 같은 기기로 여러 번 해도 카드를 골고루 보게 됨 */
+  function DeckSet(cards, rng, memory) {
     this.rng = rng;
     this.byType = {};
     this.piles = {};
+    this.memory = memory || null;
+    this.seenOrder = [];
     for (var i = 0; i < cards.length; i++) {
       var type = cards[i].type;
       (this.byType[type] = this.byType[type] || []).push(cards[i]);
+    }
+    if (this.memory) {
+      var ids = {};
+      cards.forEach(function (c) { ids[c.id] = true; });
+      var loaded = [];
+      try { loaded = this.memory.load() || []; } catch (e) { loaded = []; }
+      this.seenOrder = loaded.filter(function (id) { return ids[id]; });
     }
   }
 
@@ -63,15 +77,30 @@
     return Object.keys(this.byType);
   };
 
+  DeckSet.prototype._buildPile = function (type) {
+    var all = this.byType[type];
+    var order = this.seenOrder;
+    var unseen = all.filter(function (c) { return order.indexOf(c.id) < 0; });
+    var seen = all.filter(function (c) { return order.indexOf(c.id) >= 0; });
+    // pop()은 끝에서 꺼내므로: [최근에 나온 카드 ... 오래전에 나온 카드, 안 나온 카드(섞음)]
+    seen.sort(function (a, b) { return order.indexOf(b.id) - order.indexOf(a.id); });
+    return seen.concat(BG.shuffle(unseen, this.rng));
+  };
+
   DeckSet.prototype.draw = function (type) {
     // 요청한 종류가 없으면 딜레마 → 아무 카드 순으로 대체
     if (!this.byType[type]) type = this.byType.dilemma ? 'dilemma' : this.types()[0];
     if (!type) return null;
     var pile = this.piles[type];
-    if (!pile || pile.length === 0) {
-      pile = this.piles[type] = BG.shuffle(this.byType[type], this.rng);
+    if (!pile || pile.length === 0) pile = this.piles[type] = this._buildPile(type);
+    var card = pile.pop();
+    if (card && this.memory) {
+      var i = this.seenOrder.indexOf(card.id);
+      if (i >= 0) this.seenOrder.splice(i, 1);
+      this.seenOrder.push(card.id);
+      try { this.memory.save(this.seenOrder); } catch (e) { /* 저장 못 해도 게임은 계속 */ }
     }
-    return pile.pop();
+    return card;
   };
 
   BG.DeckSet = DeckSet;
@@ -84,9 +113,9 @@
    *   tile = { n, type, deck?, to?, art }
    *   type: start | finish | normal | event | teacher | up | down
    */
-  BG.buildBoard = function (pack, size) {
+  BG.buildBoard = function (pack, size, layoutOverride) {
     var boardDef = pack.board || {};
-    var layout = (boardDef.layouts && boardDef.layouts[size]) || BG.generateLayout(size, boardDef.autoRules);
+    var layout = layoutOverride || (boardDef.layouts && boardDef.layouts[size]) || BG.generateLayout(size, boardDef.autoRules);
     var tiles = [null];
     var n;
 
@@ -189,6 +218,104 @@
     }
 
     return { events: events, teacher: teacher, jumps: jumps, fill: rules.fill ? deckPattern : null, generated: true };
+  };
+
+  /* ---------- 매번 새 판 ----------
+   * 게임을 시작할 때마다 업로드·다운로드 위치와 칸별 카드 종류를 새로 배치
+   * 간격 규칙
+   *   - 판을 업로드 개수만큼 구간으로 나눠, 구간마다 업로드 출발 칸을 하나씩 → 한쪽에 몰리지 않음
+   *   - 다운로드도 같은 방식으로, 업로드와 반 구간 어긋나게
+   *   - 출발 칸끼리는 minGap칸 이상 떨어짐, 한 칸을 두 번 쓰지 않음
+   *   - 업로드는 도착 칸 바로 앞까지, 다운로드는 출발 직후 칸에는 두지 않음
+   * rules = board.randomRules (packs/.../board.js)
+   */
+  BG.randomLayout = function (size, rules, rng) {
+    rules = rules || {};
+    var pick = function (table, dflt) {
+      if (!table) return dflt;
+      if (table[size] !== undefined) return table[size];
+      return size >= 30 ? table.large : table.small;
+    };
+    var jc = pick(rules.jumps, size >= 30 ? { up: 3, down: 3 } : { up: 2, down: 2 });
+    var teacherCount = pick(rules.teacher, size >= 30 ? 2 : 1);
+    var minGap = rules.minGap || 3;
+    var span = rules.span || [0.15, 0.3];
+    var minLen = Math.max(3, Math.round(size * span[0]));
+    var maxLen = Math.max(minLen + 1, Math.round(size * span[1]));
+    var ri = function (a, b) { return a + Math.floor(rng() * (b - a + 1)); };
+
+    for (var attempt = 0; attempt < 300; attempt++) {
+      var used = {};
+      used[1] = used[size] = true;
+      var sources = [];
+      var jumps = [];
+      var ok = true;
+
+      var place = function (count, up, offset) {
+        var lo = up ? 3 : 6, hi = up ? size - 4 : size - 2;
+        var seg = (hi - lo + 1) / count;
+        for (var i = 0; i < count && ok; i++) {
+          var a = Math.floor(lo + seg * (i + offset)), b = Math.min(hi, Math.floor(lo + seg * (i + offset + 1)) - 1);
+          a = Math.min(a, hi);
+          var done = false;
+          for (var t = 0; t < 30 && !done; t++) {
+            var from = ri(a, Math.max(a, b));
+            var len = ri(minLen, maxLen);
+            var to = up ? from + len : from - len;
+            if (up && to > size - 1) to = size - 1;
+            if (!up && to < 2) to = 2;
+            if (Math.abs(to - from) < minLen - 1) continue;
+            if (used[from] || used[to]) continue;
+            if (sources.some(function (s) { return Math.abs(s - from) < minGap; })) continue;
+            used[from] = used[to] = true;
+            sources.push(from);
+            jumps.push({ from: from, to: to });
+            done = true;
+          }
+          if (!done) ok = false;
+        }
+      };
+      place(jc.up, true, 0);
+      place(jc.down, false, 0.5);
+      if (!ok) continue;
+
+      var teacher = [];
+      for (var k = 0; k < teacherCount; k++) {
+        var target = Math.round(size * (k + 1) / (teacherCount + 1)) + ri(-2, 2);
+        for (var d = 0; d < size; d++) {
+          var c1 = target + d, c2 = target - d;
+          if (c1 > 1 && c1 < size && !used[c1]) { target = c1; break; }
+          if (c2 > 1 && c2 < size && !used[c2]) { target = c2; break; }
+        }
+        used[target] = true;
+        teacher.push(target);
+      }
+
+      // 나머지 칸의 카드 종류: 비율(fillWeights)대로 만들고 섞되, 같은 종류가 3칸 넘게 이어지지 않게
+      var free = 0;
+      for (var n = 2; n < size; n++) if (!used[n]) free++;
+      var weights = rules.fillWeights || { dilemma: 7, quiz: 4, chance: 4 };
+      var keys = Object.keys(weights), total = 0;
+      keys.forEach(function (key) { total += weights[key]; });
+      var fill = [];
+      keys.forEach(function (key) {
+        for (var q = 0; q < Math.round(free * weights[key] / total); q++) fill.push(key);
+      });
+      while (fill.length < free) fill.push(keys[0]);
+      fill.length = free;
+      for (var tries = 0; tries < 50; tries++) {
+        fill = BG.shuffle(fill, rng);
+        var run = 1, bad = false;
+        for (var f = 1; f < fill.length; f++) {
+          run = fill[f] === fill[f - 1] ? run + 1 : 1;
+          if (run > 3 || (fill[f] === 'chance' && run > 2)) { bad = true; break; }
+        }
+        if (!bad) break;
+      }
+
+      return { teacher: teacher, jumps: jumps, fill: fill, random: true };
+    }
+    return null;   // 규칙에 맞는 배치를 못 찾으면 고정 판 사용
   };
 
   /* ---------- 카드팩 검사 ----------

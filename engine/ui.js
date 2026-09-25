@@ -17,6 +17,29 @@
   var busy = false;
   var timers = [];
   var boardObserver = null;
+  var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // 이 기기 브라우저에 "이미 나온 카드 번호"만 기억 (이름 등 개인정보는 저장하지 않음)
+  function cardMemory() {
+    var key = 'updown-road-seen:' + pack.id;
+    return {
+      load: function () {
+        try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch (e) { return []; }
+      },
+      save: function (ids) {
+        try { localStorage.setItem(key, JSON.stringify(ids)); } catch (e) { /* 저장소를 못 쓰면 기억 없이 진행 */ }
+      },
+      clear: function () {
+        try { localStorage.removeItem(key); } catch (e) { /* 무시 */ }
+      }
+    };
+  }
+
+  function seenCount() {
+    var ids = {};
+    (pack.cards || []).forEach(function (c) { ids[c.id] = true; });
+    return cardMemory().load().filter(function (id) { return ids[id]; }).length;
+  }
 
   var $ = function (sel, el) { return (el || document).querySelector(sel); };
   var wait = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
@@ -35,7 +58,7 @@
   }
 
   function tokenName(i) {
-    return game.tokens.length === 1 ? '우리 모둠' : (i + 1) + '번 말';
+    return game.tokens.length === 1 ? '우리 모둠' : (i + 1) + '모둠';
   }
 
   function tokenColor(i) {
@@ -85,7 +108,7 @@
                cfg.modes.filter(function (m) { return m.id === cfg.defaultMode; })[0] || cfg.modes[0];
     var tokens = parseInt(overrides.tokens, 10);
     if (!(tokens >= 1 && tokens <= cfg.maxTokens)) tokens = cfg.defaultTokens;
-    settings = { mode: mode, tokens: tokens };
+    settings = { mode: mode, tokens: tokens, randomBoard: cfg.randomBoard !== false };
 
     // 판 영역 크기가 바뀌면(화면 회전, 점수판 줄 수 변화 등) 판을 다시 배치
     var relayout = function () { if (game && !game.over) layoutBoard(); };
@@ -135,6 +158,9 @@
       return '<button class="opt" data-mode="' + esc(m.id) + '" aria-pressed="' + (m === settings.mode) + '">' +
         '<b>' + esc(m.label) + '</b><small>' + m.size + '칸</small></button>';
     }).join('');
+    var boardButtons =
+      '<button class="opt" data-board="random" aria-pressed="' + settings.randomBoard + '"><b>매번 새 판</b><small>길이 매번 바뀜</small></button>' +
+      '<button class="opt" data-board="fixed" aria-pressed="' + !settings.randomBoard + '"><b>고정 판</b><small>늘 같은 길</small></button>';
     var tokenButtons = '';
     for (var i = 1; i <= cfg.maxTokens; i++) {
       tokenButtons += '<button class="opt tok" data-tokens="' + i + '" aria-pressed="' + (i === settings.tokens) + '" style="--c:' + tokenColor(i - 1) + '"><b>' + i + '</b></button>';
@@ -152,18 +178,21 @@
           '<p class="pack-name">카드팩 · ' + esc(meta.name || pack.id) + ' · 카드 ' + (pack.cards || []).length + '장</p>' +
           '<div class="setup-grid">' +
             '<div class="field"><h2>판 크기</h2><div class="opts" id="mode-opts">' + modeButtons + '</div></div>' +
-            '<div class="field"><h2>말 개수 <small>1 = 모둠 전체가 말 하나</small></h2><div class="opts tokens-opts" id="token-opts">' + tokenButtons + '</div></div>' +
+            '<div class="field"><h2>판 배치</h2><div class="opts" id="board-opts">' + boardButtons + '</div></div>' +
+            '<div class="field"><h2>모둠 수 <small>한 화면에서 함께 겨루는 모둠</small></h2><div class="opts tokens-opts" id="token-opts">' + tokenButtons + '</div></div>' +
           '</div>' +
           '<button class="btn big primary start" id="start-btn">시작하기</button>' +
           '<details class="rules"><summary>놀이 방법</summary><ol>' +
-            '<li>주사위를 굴려 나온 수만큼 말이 움직여요.</li>' +
+            '<li>모둠마다 차례로 주사위를 굴려 나온 수만큼 말이 움직여요.</li>' +
             '<li>도착한 칸마다 <b>딜레마</b>, <b>돌발 퀴즈</b>, <b>돌발 상황</b>이 기다려요.</li>' +
             '<li>딜레마는 정답이 하나가 아니에요. 모둠이 토의해서 고르고, <b>고른 이유</b>를 말하면 ' + esc(label('judgment')) + ' 점수를 더 받아요.</li>' +
             '<li>선택에 따라 <b>' + esc(label('trust')) + '</b>와 <b>' + esc(label('judgment')) + '</b> 점수가 바뀌고, 앞으로 가거나 미끄러져요.</li>' +
             '<li><b>업로드</b> 칸은 위로 슝, <b>다운로드</b> 칸은 아래로 쭉! <b>선생님 칸</b>에서는 선생님을 불러요.</li>' +
-            '<li>누가 먼저가 아니라, 모두 함께 도착하는 게 목표예요.</li>' +
+            '<li>판 배치를 "매번 새 판"으로 하면 업로드·다운로드 위치와 칸의 카드 종류가 게임마다 바뀌어요.</li>' +
+            '<li>누가 먼저가 아니라, 모든 모둠이 함께 도착하는 게 목표예요.</li>' +
           '</ol></details>' +
-          '<p class="privacy">이름이나 기록을 저장하지 않아요. 창을 닫으면 모두 지워져요.</p>' +
+          (cfg.rememberCards !== false ? '<p class="memory" id="memory-line"></p>' : '') +
+          '<p class="privacy">이름이나 점수는 저장하지 않아요. 카드를 골고루 보도록 이 기기에 나온 카드 번호만 기억해요.</p>' +
         '</div>' +
         (cfg.credit ? '<p class="credit">' + esc(cfg.credit) + '</p>' : '') +
       '</section>';
@@ -182,8 +211,26 @@
       pressOnly(this, b);
       sound.tap();
     });
+    $('#board-opts').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-board]');
+      if (!b) return;
+      settings.randomBoard = b.dataset.board === 'random';
+      pressOnly(this, b);
+      sound.tap();
+    });
     $('#start-btn').addEventListener('click', startGame);
     bindSoundButton();
+    renderMemoryLine();
+  }
+
+  function renderMemoryLine() {
+    var el = $('#memory-line');
+    if (!el) return;
+    var n = seenCount(), total = (pack.cards || []).length;
+    el.innerHTML = '이 기기에서 나온 카드 <b>' + n + ' / ' + total + '장</b>' +
+      (n ? ' <button class="linklike" id="memory-reset">기록 지우기</button>' : '');
+    var b = $('#memory-reset');
+    if (b) b.addEventListener('click', function () { cardMemory().clear(); renderMemoryLine(); sound.tap(); });
   }
 
   // 제목 글자 하나하나를 살짝 다른 높이로 — 오르락내리락 느낌
@@ -207,7 +254,9 @@
       size: settings.mode.size,
       tokens: settings.tokens,
       endWhen: cfg.endWhen,
-      dieFaces: cfg.dieFaces
+      dieFaces: cfg.dieFaces,
+      randomBoard: settings.randomBoard,
+      cardMemory: cfg.rememberCards !== false ? cardMemory() : null
     });
     displayPos = game.tokens.map(function () { return 1; });
     busy = false;
@@ -216,7 +265,7 @@
       '<section class="screen game">' +
         '<header class="topbar">' +
           '<span class="game-title">' + esc(cfg.title) + '</span>' +
-          '<span class="mode-tag">' + esc(settings.mode.label) + ' ' + game.size + '칸</span>' +
+          '<span class="mode-tag">' + esc(settings.mode.label) + ' ' + game.size + '칸' + (settings.randomBoard ? ' · 새 판' : '') + '</span>' +
           '<span class="spacer"></span>' +
           soundButton() +
           '<button class="btn small ghost" id="stop-btn">끝내기</button>' +
@@ -271,7 +320,7 @@
     html += '<svg class="jumps" id="jumps" aria-hidden="true"></svg><div class="tokens" id="tokens"></div><div class="fx" id="fx"></div>';
     $('#board').innerHTML = html;
     $('#tokens').innerHTML = game.tokens.map(function (tk, i) {
-      return '<span class="token" data-token="' + i + '" style="--c:' + tokenColor(i) + '"><i>' + (game.tokens.length > 1 ? i + 1 : '') + '</i></span>';
+      return '<span class="token" data-token="' + i + '" style="--c:' + tokenColor(i) + '"><span class="piece"><i>' + (game.tokens.length > 1 ? i + 1 : '') + '</i></span></span>';
     }).join('');
     layoutBoard();
   }
@@ -325,6 +374,30 @@
     return { x: (p.col + 0.5) * view.cell, y: (p.row + 0.5) * view.cell };
   }
 
+  // 업로드는 곧은 사다리, 다운로드는 S자 곡선. 그리기와 말 이동이 같은 모양을 씀
+  function jumpGeom(n) {
+    var t = game.tile(n);
+    var a = centerOf(n), b = centerOf(t.to);
+    var dx = b.x - a.x, dy = b.y - a.y, len = Math.sqrt(dx * dx + dy * dy) || 1;
+    var px = -dy / len, py = dx / len;
+    var bend = Math.min(len * 0.35, view.cell * 1.1);
+    return {
+      a: a, b: b, len: len,
+      c1: { x: a.x + dx / 3 + px * bend, y: a.y + dy / 3 + py * bend },
+      c2: { x: a.x + 2 * dx / 3 - px * bend, y: a.y + 2 * dy / 3 - py * bend }
+    };
+  }
+
+  function jumpPoint(n, k) {
+    var g = jumpGeom(n);
+    if (game.tile(n).type === 'up') return { x: g.a.x + (g.b.x - g.a.x) * k, y: g.a.y + (g.b.y - g.a.y) * k };
+    var u = 1 - k;
+    return {
+      x: u * u * u * g.a.x + 3 * u * u * k * g.c1.x + 3 * u * k * k * g.c2.x + k * k * k * g.b.x,
+      y: u * u * u * g.a.y + 3 * u * u * k * g.c1.y + 3 * u * k * k * g.c2.y + k * k * k * g.b.y
+    };
+  }
+
   // 업로드(사다리 모양)와 다운로드(구불구불한 미끄럼틀)
   function drawJumps() {
     var svg = $('#jumps');
@@ -351,9 +424,8 @@
         }
         out += '</g>';
       } else {
-        var bend = Math.min(len * 0.35, c * 1.1);
-        var c1x = a.x + dx / 3 + px * bend, c1y = a.y + dy / 3 + py * bend;
-        var c2x = a.x + 2 * dx / 3 - px * bend, c2y = a.y + 2 * dy / 3 - py * bend;
+        var g = jumpGeom(n);
+        var c1x = g.c1.x, c1y = g.c1.y, c2x = g.c2.x, c2y = g.c2.y;
         var d = 'M' + r(a.x) + ' ' + r(a.y) + ' C' + r(c1x) + ' ' + r(c1y) + ' ' + r(c2x) + ' ' + r(c2y) + ' ' + r(b.x) + ' ' + r(b.y);
         out += '<g class="slide"><path class="slide-edge" d="' + d + '" style="stroke-width:' + r(c * 0.24) + '"/>' +
           '<path class="slide-body" d="' + d + '" style="stroke-width:' + r(c * 0.17) + '"/>' +
@@ -397,20 +469,80 @@
     });
   }
 
-  async function animatePath(tokenIndex, path, jump) {
+  // 한 칸씩 통통 뛰어 이동 (앞으로 / 뒤로)
+  async function animatePath(tokenIndex, path) {
     var el = $('#tokens [data-token="' + tokenIndex + '"]');
+    var back = path.length && path[0] < displayPos[tokenIndex];
+    var ms = reduceMotion ? 120 : cfg.stepMs;
+    if (el) el.style.setProperty('--hop', ms + 'ms');
     for (var i = 0; i < path.length; i++) {
       displayPos[tokenIndex] = path[i];
-      if (el) {
-        el.classList.toggle('flying', !!jump);
-        el.classList.remove('hop'); void el.offsetWidth; el.classList.add('hop');
-      }
+      if (el) { el.classList.remove('hop'); void el.offsetWidth; el.classList.add('hop'); }
       placeTokens(false);
-      if (!jump) sound.step(i);
-      await wait(jump ? 480 : cfg.stepMs);
+      if (back) sound.stepBack(i); else sound.step(i);
+      await wait(ms);
     }
-    if (el) el.classList.remove('flying', 'hop');
+    if (el) el.classList.remove('hop');
+    if (path.length) { sound.land(); dust(path[path.length - 1]); }
     placeTokens(false);
+  }
+
+  // 업로드: 사다리를 천천히 타고 오름 / 다운로드: 미끄럼틀을 따라 빙글빙글 떨어짐
+  async function animateJump(tokenIndex, from, to) {
+    var up = game.tile(from).type === 'up';
+    var el = $('#tokens [data-token="' + tokenIndex + '"]');
+    var dur = reduceMotion ? 300 : (up ? 2300 : 2100);
+    if (up) sound.climb(dur / 1000); else sound.fall(dur / 1000);
+    if (el) el.classList.add('instant', up ? 'climbing' : 'falling');
+    var half = el ? el.offsetWidth / 2 : 0;
+    var t0 = performance.now();
+    await new Promise(function (done) {
+      function frame(now) {
+        var p = Math.min(1, (now - t0) / dur);
+        // 오를 때는 한 칸씩 끙차끙차(계단식), 떨어질 때는 점점 빨라짐
+        var k = up ? (p + Math.sin(p * Math.PI * 10) * 0.018) : p * p;
+        k = Math.max(0, Math.min(1, k));
+        var pt = jumpPoint(from, k);
+        if (el) {
+          el.style.left = (pt.x - half) + 'px';
+          el.style.top = (pt.y - half + view.cell * 0.06) + 'px';
+        }
+        if (p < 1) requestAnimationFrame(frame); else done();
+      }
+      requestAnimationFrame(frame);
+    });
+    displayPos[tokenIndex] = to;
+    if (el) el.classList.remove('climbing', 'falling');
+    placeTokens(false);
+    if (up) {
+      sound.cheer(1.8);
+      burst(to, cfg.theme.up);
+      burst(to, cfg.theme.bg);
+    } else {
+      sound.sad();
+      dust(to);
+      var board = $('#board');
+      if (board && !reduceMotion) { board.classList.remove('shake'); void board.offsetWidth; board.classList.add('shake'); }
+    }
+    await wait(reduceMotion ? 200 : 1100);
+  }
+
+  // 도착한 칸을 잠깐 반짝이게
+  async function highlightTile(n) {
+    var t = $('#board [data-n="' + n + '"]');
+    if (!t) return;
+    t.classList.remove('landing'); void t.offsetWidth; t.classList.add('landing');
+    await wait(reduceMotion ? 150 : 650);
+    t.classList.remove('landing');
+  }
+
+  // 결과에 따라 움직이기 전에 "2칸 전진!" 같은 알림
+  async function announceMove(move) {
+    if (!move || move.from === move.to) return;
+    var n = Math.abs(move.to - move.from);
+    var fwd = move.to > move.from;
+    toast(fwd ? n + '칸 앞으로!' : n + '칸 뒤로...', fwd ? 'up' : 'down');
+    await wait(reduceMotion ? 150 : 600);
   }
 
   function renderPanel() {
@@ -467,37 +599,47 @@
     await animatePath(idx, move.path);
 
     var land = game.landing();
+    if (land.kind !== 'none' && land.kind !== 'finish') await highlightTile(move.to);
+
     if (land.kind === 'jump') {
       // 업로드/다운로드 칸은 멈추지 않고 바로 이동
       var up = land.dir === 'up';
       var labels = meta.tileLabels || {};
-      if (up) sound.up(); else sound.down();
       toast((up ? (labels.up || '지름길') : (labels.down || '미끄럼틀')) + '! ' + move.to + ' → ' + land.to, up ? 'up' : 'down');
-      var j = game.applyJump();
-      await animatePath(idx, j.path, true);
-      burst(j.to, up ? cfg.theme.up : cfg.theme.down);
+      var from = move.to;
+      game.applyJump();
+      await animateJump(idx, from, land.to);
       renderPanel();
     } else if (land.kind === 'card') {
+      // 카드의 문제·상황을 모두 해결한 뒤에 점수를 반영하고 말을 움직임
       var card = game.drawCard(land.deck);
       if (card) {
         var pick = await showCard(card);
         var res = game.resolveCard(card, pick.choice, { reasoned: pick.reasoned });
         renderPanel();
-        if (res.move) await animatePath(idx, res.move.path);
+        if (res.move) {
+          await announceMove(res.move);
+          await animatePath(idx, res.move.path);
+        }
       }
     } else if (land.kind === 'teacher') {
       var tr = await showTeacher();
       var tres = game.resolveTeacher(tr.level, tr.prompt);
       renderPanel();
-      if (tres.move) await animatePath(idx, tres.move.path);
+      if (tres.move) {
+        await announceMove(tres.move);
+        await animatePath(idx, tres.move.path);
+      }
     }
 
     displayPos[idx] = game.tokens[idx].pos;
+    placeTokens(false);
     if (game.tokens[idx].finished) {
       sound.finish();
-      confetti();
+      confetti(140);
+      burst(game.size, cfg.theme.accent);
       toast(tokenName(idx) + ' 도착!', 'up');
-      await wait(900);
+      await wait(reduceMotion ? 400 : 3200);
     }
 
     game.endTurn();
@@ -553,12 +695,26 @@
     }
   }
 
+  // 말이 내려앉은 자리에 먼지 퍼짐
+  function dust(n) {
+    var fx = $('#fx');
+    if (!fx || reduceMotion) return;
+    var c = centerOf(n);
+    var d = document.createElement('b');
+    d.className = 'dust';
+    d.style.left = c.x + 'px';
+    d.style.top = (c.y + view.cell * 0.22) + 'px';
+    d.style.width = d.style.height = view.cell * 0.7 + 'px';
+    fx.appendChild(d);
+    setTimeout(d.remove.bind(d), 500);
+  }
+
   // 도착했을 때 화면 전체에 종이 조각
-  function confetti() {
+  function confetti(count) {
     var root = document.createElement('div');
     root.className = 'confetti';
     var colors = cfg.theme.tokenColors;
-    for (var i = 0; i < 60; i++) {
+    for (var i = 0; i < (count || 60); i++) {
       var p = document.createElement('i');
       p.style.left = Math.random() * 100 + 'vw';
       p.style.background = colors[i % colors.length];
@@ -568,7 +724,7 @@
       root.appendChild(p);
     }
     document.body.appendChild(root);
-    setTimeout(function () { root.remove(); }, 3400);
+    setTimeout(function () { root.remove(); }, 4200);
   }
 
   /* ================= 창(모달) ================= */

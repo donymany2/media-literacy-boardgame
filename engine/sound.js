@@ -84,24 +84,106 @@
     tone(t, 0.09, f, f * 1.5, 'triangle', 0.22);
   };
 
-  // 업로드(지름길): 올라가는 '슈웅' + 반짝 화음
-  S.up = function () {
+  // 뒤로 한 칸: 칸마다 조금씩 낮아지는 '뽁'
+  S.stepBack = function (i) {
     if (!ready()) return;
-    var t = ctx.currentTime;
-    tone(t, 0.45, 260, 1400, 'sawtooth', 0.08);
-    [523, 659, 784, 1047].forEach(function (f, i) { tone(t + 0.08 + i * 0.07, 0.22, f, f, 'triangle', 0.22); });
+    var t = ctx.currentTime, f = 480 - (i % 8) * 35;
+    tone(t, 0.1, f, f * 0.7, 'triangle', 0.2);
   };
 
-  // 다운로드(미끄럼틀): 내려가는 미끄럼 휘파람
-  S.down = function () {
+  // 말이 칸에 내려앉는 '톡'
+  S.land = function () {
     if (!ready()) return;
     var t = ctx.currentTime;
-    var o = tone(t, 0.7, 1100, 180, 'triangle', 0.25);
+    knock(t, 0.04, 900, 0.3);
+    tone(t, 0.08, 160, 110, 'sine', 0.25);
+  };
+
+  // 업로드 오르는 중: 사다리를 한 칸씩 밟는 소리가 점점 높아지고, 바람 소리가 올라감
+  S.climb = function (dur) {
+    if (!ready()) return;
+    var t = ctx.currentTime, steps = Math.max(6, Math.round(dur / 0.16));
+    for (var i = 0; i < steps; i++) {
+      var f = 330 * Math.pow(2, i / steps * 1.6);
+      tone(t + i * dur / steps, 0.09, f, f * 1.12, 'square', 0.07);
+    }
+    tone(t, dur, 200, 900, 'sine', 0.06);
+  };
+
+  // 환호: 박수 소리 + 여러 목소리의 "와아~"
+  S.cheer = function (dur) {
+    if (!ready()) return;
+    dur = dur || 1.6;
+    var t = ctx.currentTime, i;
+    for (i = 0; i < dur * 38; i++) {
+      var at = t + Math.random() * dur;
+      var v = 0.12 + Math.random() * 0.18;
+      knock(at, 0.025, 1200 + Math.random() * 2200, v * (1 - (at - t) / (dur * 1.2)));
+    }
+    for (i = 0; i < 6; i++) {
+      var base = 260 + Math.random() * 180;
+      var o = ctx.createOscillator(), g = ctx.createGain(), f = ctx.createBiquadFilter();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(base, t);
+      o.frequency.linearRampToValueAtTime(base * 1.6, t + 0.35);
+      o.frequency.linearRampToValueAtTime(base * 1.3, t + dur);
+      f.type = 'bandpass'; f.frequency.value = 900 + i * 140; f.Q.value = 2.5;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.05, t + 0.12);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(f); f.connect(g); g.connect(master);
+      o.start(t + Math.random() * 0.08); o.stop(t + dur + 0.05);
+    }
+  };
+
+  // 다운로드 떨어지는 중: 길게 내려가는 미끄럼 휘파람
+  S.fall = function (dur) {
+    if (!ready()) return;
+    var t = ctx.currentTime;
+    var o = tone(t, dur, 1200, 140, 'triangle', 0.22);
     var lfo = ctx.createOscillator(), lg = ctx.createGain();
-    lfo.frequency.value = 9; lg.gain.value = 40;
+    lfo.frequency.value = 7; lg.gain.value = 35;
     lfo.connect(lg); lg.connect(o.frequency);
-    lfo.start(t); lfo.stop(t + 0.72);
-    tone(t + 0.68, 0.12, 140, 90, 'sine', 0.35);
+    lfo.start(t); lfo.stop(t + dur + 0.05);
+  };
+
+  // 좌절: 트롬본 "빠밤빠밤~ 뿌우우"
+  S.sad = function () {
+    if (!ready()) return;
+    var t = ctx.currentTime;
+    [[311, 0], [294, 0.32], [277, 0.64]].forEach(function (n) { brass(t + n[1], 0.3, n[0], n[0] * 0.98, 0.16); });
+    brass(t + 0.96, 1.1, 262, 247, 0.18, true);
+  };
+
+  // 금관 소리 흉내 (톱니파 + 저역 통과 필터)
+  function brass(t, dur, from, to, vol, wobble) {
+    var o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(from, t);
+    o.frequency.linearRampToValueAtTime(to, t + dur);
+    f.type = 'lowpass'; f.frequency.setValueAtTime(700, t); f.frequency.linearRampToValueAtTime(2200, t + 0.06); f.frequency.linearRampToValueAtTime(1100, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.04);
+    g.gain.setValueAtTime(vol, t + dur * 0.8);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(f); f.connect(g); g.connect(master);
+    if (wobble) {
+      var lfo = ctx.createOscillator(), lg = ctx.createGain();
+      lfo.frequency.value = 6; lg.gain.value = 8;
+      lfo.connect(lg); lg.connect(o.frequency);
+      lfo.start(t + 0.2); lfo.stop(t + dur);
+    }
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+
+  // 빵빠레: 빰 빰 빰 빠바밤~
+  S.fanfare = function () {
+    if (!ready()) return;
+    var t = ctx.currentTime;
+    var notes = [[392, 0, 0.14], [392, 0.16, 0.14], [392, 0.32, 0.14], [523, 0.5, 0.5], [466, 1.02, 0.14], [523, 1.18, 0.14], [659, 1.34, 0.9]];
+    notes.forEach(function (n) { brass(t + n[1], n[2], n[0], n[0], 0.14); });
+    [523, 659, 784].forEach(function (f) { brass(t + 1.34, 0.9, f, f, 0.07); });
+    knock(t + 1.34, 0.3, 5000, 0.25);   // 심벌
   };
 
   // 카드 등장: 딩동
@@ -133,11 +215,10 @@
     tone(t + 0.22, 0.45, 330, 262, 'sawtooth', 0.09);
   };
 
-  // 도착: 빰빠밤
+  // 도착: 빵빠레 + 환호
   S.finish = function () {
     if (!ready()) return;
-    var t = ctx.currentTime;
-    [523, 659, 784].forEach(function (f, i) { tone(t + i * 0.12, 0.14, f, f, 'square', 0.12); });
-    [523, 659, 784, 1047].forEach(function (f) { tone(t + 0.4, 0.8, f, f, 'triangle', 0.14); });
+    S.fanfare();
+    setTimeout(function () { S.cheer(2.4); }, 900);
   };
 })();
