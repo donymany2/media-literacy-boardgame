@@ -200,7 +200,8 @@
       modeLabel: settings.mode.label,
       randomBoard: settings.randomBoard,
       speedId: settings.speed,
-      modeId: settings.mode.id
+      modeId: settings.mode.id,
+      rankBy: (cfg.classroom || {}).rankBy || 'score'
     };
   }
 
@@ -231,7 +232,11 @@
     this.backlog = [];
     this.stopped = false;
     this.done = false;
+    // 학급 방에서만: 딜레마별로 모둠들이 고른 선택(원래 순서 기준) 모음 { 카드id: { counts: [], teams: {} } }
+    this.shared = o.role === 'host' ? (o.shared || {}) : null;
   }
+
+  function classCfg() { return cfg.classroom || {}; }
 
   Director.prototype.start = function () {
     View.mount(this.info, this.game.snap(), { role: this.role, room: this.room });
@@ -344,7 +349,7 @@
 
     if (land.kind === 'card') {
       turnCtx.cards++;
-      var card = game.drawCard(land.deck);
+      var card = this.drawShared(idx, land.deck) || game.drawCard(land.deck);
       if (!card) return;
       var res = await this.cardFlow(idx, card);
       if (res.move && res.move.from !== res.move.to) {
@@ -370,14 +375,16 @@
     }
     var items = card.type === 'quiz' ? card.options : card.choices;
     var selected = null;
+    var others = this.othersFor(card, idx);
     for (;;) {
-      var r = await this.ask({ kind: 'card', team: idx, card: card, uid: uid, selected: selected }, ['select', 'confirm']);
+      var r = await this.ask({ kind: 'card', team: idx, card: card, uid: uid, selected: selected, others: others }, ['select', 'confirm']);
       if (r.action === 'select') {
         if (typeof r.value === 'number' && r.value >= 0 && r.value < items.length) selected = r.value;
         continue;
       }
       if (selected !== null) break;
     }
+    this.recordChoice(card, idx, selected);
     var reasoned = false;
     if (card.type === 'dilemma' && game.reasonBonus()) {
       var r2 = await this.ask({ kind: 'reason', team: idx, card: card, selected: selected, uid: uid + 'r' }, ['yes', 'no']);
@@ -399,6 +406,58 @@
       comment: this.pickComment(tone === 'great' || tone === 'good' ? 'good' : 'bad')
     }, ['ok']);
     return res;
+  };
+
+  // 학급 방: 딜레마 칸에서 가끔, 다른 모둠이 이미 푼 딜레마를 다시 냄 (선택 비율을 비교해 볼 수 있게)
+  // 누가·어디서가 바뀌는 카드는 상황이 달라지므로 다시 내지 않음
+  Director.prototype.drawShared = function (idx, deck) {
+    var cc = classCfg();
+    if (!this.shared || deck !== 'dilemma' || !cc.othersChoices || !(Math.random() < (cc.repeatDilemmaChance || 0))) return null;
+    var self = this;
+    var ids = Object.keys(this.shared).filter(function (id) {
+      var st = self.shared[id];
+      var raw = cardById(id);
+      return raw && !raw.slots && !st.teams[idx] && Object.keys(st.teams).length < 4;
+    });
+    if (!ids.length) return null;
+    var raw = cardById(ids[Math.floor(Math.random() * ids.length)]);
+    return BG.instantiateCard(raw, meta, Math.random);
+  };
+
+  function cardById(id) {
+    var list = pack.cards || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  }
+
+  Director.prototype.recordChoice = function (card, idx, selected) {
+    if (!this.shared || card.type !== 'dilemma') return;
+    var c = card.choices[selected];
+    if (!c || typeof c.orig !== 'number') return;
+    var st = this.shared[card.id] = this.shared[card.id] || { counts: [], teams: {} };
+    st.counts[c.orig] = (st.counts[c.orig] || 0) + 1;
+    st.teams[idx] = true;
+  };
+
+  // 지금 화면에 보이는 선택지 순서(A, B, C)에 맞춘 다른 모둠의 선택 비율(%) — 누가 골랐는지·점수는 보내지 않음
+  Director.prototype.othersFor = function (card, idx) {
+    if (!this.shared || card.type !== 'dilemma' || !classCfg().othersChoices) return null;
+    var st = this.shared[card.id];
+    if (!st) return null;
+    var otherTeams = Object.keys(st.teams).filter(function (t) { return +t !== idx; }).length;
+    if (!otherTeams) return null;
+    var counts = card.choices.map(function (c) { return st.counts[c.orig] || 0; });
+    var total = counts.reduce(function (a, b) { return a + b; }, 0);
+    if (!total) return null;
+    // 합이 100이 되도록 반올림 (가장 큰 나머지 방식)
+    var raw = counts.map(function (n) { return n * 100 / total; });
+    var pct = raw.map(Math.floor);
+    var left = 100 - pct.reduce(function (a, b) { return a + b; }, 0);
+    raw.map(function (v, i) { return { i: i, r: v - Math.floor(v) }; })
+      .sort(function (a, b) { return b.r - a.r; })
+      .slice(0, left)
+      .forEach(function (x) { pct[x.i]++; });
+    return { percents: pct, teams: otherTeams };
   };
 
   // 결과의 분위기: great(정답·아주 좋은 선택) / good / soso(점수 변화 없음) / bad(신뢰를 잃음)
@@ -462,7 +521,7 @@
   }
 
   function startHost(conn, room, seq) {
-    host = { conn: conn, room: room, seq: seq, presence: {}, director: null };
+    host = { conn: conn, room: room, seq: seq, presence: {}, director: null, choiceStats: {} };
     conn.on('status', function (s) {
       setNetStatus(s === 'connected' ? '' : s === 'reconnecting' ? '인터넷 다시 연결 중...' : '인터넷 연결 끊김', s === 'connected' ? '' : 'warn');
     });
@@ -580,7 +639,7 @@
     clearInterval(host.lobbyTimer);
     var game = restored ? restored.game : newGame();
     var info = restored ? restored.info : gameInfo(game);
-    var d = new Director({ game: game, info: info, role: 'host', conn: host.conn, room: host.room, seq: host.seq });
+    var d = new Director({ game: game, info: info, role: 'host', conn: host.conn, room: host.room, seq: host.seq, shared: host.choiceStats });
     host.director = d;
     d.onSeq = function (s) { host.seq = s; };
     d.onMount = function () { View.setPresence(onlineMap()); };

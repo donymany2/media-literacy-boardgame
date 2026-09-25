@@ -38,6 +38,8 @@
   var timers = [];
   var presence = {};
   var lastScores = null;        // 점수판에서 바뀐 점수를 톡 튀게 하려고 직전 값을 기억
+  var lastTurnRank = null;      // 추월 알림: 직전 차례가 시작될 때의 순위
+  var lastActor = null;         // 추월 알림: 직전 차례의 모둠
   var actionHandler = function () {};
   var observer = null;
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -130,6 +132,18 @@
 
   function relayout() { if (info && $('#board-wrap')) layoutBoard(); }
 
+  // 학급 방(선생님 화면·모둠 태블릿)에서만 경쟁 요소를 켬. 기기 하나로 하기는 조용하게
+  function classroom() { return (ctx.role === 'host' || ctx.role === 'team') && teams() > 1; }
+  function classCfg() { return cfg.classroom || {}; }
+
+  function rankMap(tokens) {
+    var m = {};
+    BG.rankTeams(tokens, (info && info.rankBy) || classCfg().rankBy).forEach(function (x) { m[x.team] = x.rank; });
+    return m;
+  }
+
+  var CROWN = '<svg class="crown" viewBox="0 0 24 18" aria-label="1등"><path d="M2 16 L1 4 L7 9 L12 1 L17 9 L23 4 L22 16 Z" fill="#FFCF33" stroke="#1B1A2E" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="11" r="2" fill="#FF4D3D"/></svg>';
+
   /* ================= 소리 버튼 ================= */
 
   V.soundButton = function () {
@@ -161,6 +175,8 @@
     board = BG.buildBoard(pack, info.size, info.layout);
     displayPos = s.tokens.map(function (t) { return t.pos; });
     lastScores = null;
+    lastTurnRank = null;
+    lastActor = null;
     closeModal();
 
     var roleTag = '';
@@ -426,6 +442,13 @@
       var d = snap.tokens[i][key] - prev[i][key];
       return d > 0 ? ' bump-up' : d < 0 ? ' bump-down' : '';
     };
+    if (classroom() && classCfg().ranking !== false) {
+      renderRanking(bump, cur);
+      placeTokens(false);
+      updateRollButton();
+      return;
+    }
+    $('#scores').classList.remove('ranked');
     $('#scores').innerHTML = snap.tokens.map(function (tk, i) {
       var online = ctx.role === 'host' ? (presence[i] ? ' online' : ' offline') : '';
       return '<div class="score-row' + (i === cur ? ' current' : '') + (tk.finished ? ' done' : '') + online + '" style="--tc:' + teamColor(i) + '">' +
@@ -437,6 +460,75 @@
     }).join('');
     placeTokens(false);
     updateRollButton();
+  }
+
+  // 실시간 순위표: 줄은 한 번 만들고 순위가 바뀌면 부드럽게 자리를 옮김
+  function renderRanking(bump, cur) {
+    var box = $('#scores');
+    var n = snap.tokens.length;
+    var ranking = box.querySelector('.ranking');
+    if (!ranking || ranking.children.length !== n) {
+      var rows = '';
+      for (var t = 0; t < n; t++) rows += '<div class="rank-row" data-team="' + t + '" style="--tc:' + teamColor(t) + '"></div>';
+      box.classList.add('ranked');
+      box.innerHTML = '<div class="ranking-head"><b>실시간 순위</b><small>' +
+        (((info && info.rankBy) || classCfg().rankBy) === 'position' ? '앞선 칸 순' : esc(label('trust')) + '+' + esc(label('judgment')) + ' 합계 순') + '</small></div>' +
+        '<div class="ranking" style="--n:' + n + '">' + rows + '</div>';
+      ranking = box.querySelector('.ranking');
+    }
+    var list = BG.rankTeams(snap.tokens, (info && info.rankBy) || classCfg().rankBy);
+    var allTied = list.every(function (x) { return x.rank === 1; });
+    list.forEach(function (x, k) {
+      var tk = snap.tokens[x.team];
+      var row = ranking.querySelector('[data-team="' + x.team + '"]');
+      row.style.setProperty('--k', k);
+      row.classList.toggle('current', x.team === cur);
+      row.classList.toggle('first', x.rank === 1 && !allTied);
+      row.classList.toggle('mine', ctx.role === 'team' && x.team === ctx.myTeam);
+      var online = ctx.role === 'host' ? (presence[x.team] ? ' · 연결됨' : ' · 연결 전') : '';
+      var sig = [x.rank, allTied, tk.pos, tk.finished, tk.trust, tk.judgment, online].join('|');
+      if (row.dataset.sig === sig) return;
+      row.dataset.sig = sig;
+      row.innerHTML =
+        '<span class="rank-no">' + (x.rank === 1 && !allTied ? CROWN : x.rank) + '</span>' +
+        '<span class="dot" style="--c:' + teamColor(x.team) + '"></span>' +
+        '<span class="who">' + esc(teamName(x.team)) + (ctx.role === 'team' && x.team === ctx.myTeam ? ' <em>우리</em>' : '') +
+          '<small>' + (tk.finished ? '도착' : tk.pos + '칸') + online + '</small></span>' +
+        '<span class="pt trust' + bump(x.team, 'trust') + '" title="' + esc(label('trust')) + '">' + ICONS.trust + '<b>' + tk.trust + '</b></span>' +
+        '<span class="pt judgment' + bump(x.team, 'judgment') + '" title="' + esc(label('judgment')) + '">' + ICONS.judgment + '<b>' + tk.judgment + '</b></span>';
+    });
+  }
+
+  // 추월 알림: 차례가 시작될 때, 직전 차례 모둠이 누구를 앞지르거나 누구에게 추월당했는지 한 번만 알림
+  function overtakeMessage(sc, fast) {
+    if (!classroom() || classCfg().overtakeAlerts === false || !snap) return null;
+    var now = rankMap(snap.tokens);
+    var msg = null;
+    var a = lastActor;
+    if (!fast && lastTurnRank && a !== null && a !== sc.team) {
+      var passed = [], passedBy = [];
+      Object.keys(now).forEach(function (k) {
+        var t = +k;
+        if (t === a) return;
+        if (lastTurnRank[t] < lastTurnRank[a] && now[t] > now[a]) passed.push(t);
+        if (lastTurnRank[t] > lastTurnRank[a] && now[t] < now[a]) passedBy.push(t);
+      });
+      var names = function (list) { return list.map(teamName).join(', '); };
+      if (passed.length) msg = teamName(a) + '이 ' + names(passed) + '을 추월했어요.';
+      else if (passedBy.length) msg = names(passedBy) + '이 ' + teamName(a) + '을 추월했어요.';
+    }
+    lastTurnRank = now;
+    lastActor = sc.team;
+    return msg;
+  }
+
+  function turnStart(sc, fast) {
+    var msg = overtakeMessage(sc, fast);
+    var mine = ctx.role === 'team' && sc.team === ctx.myTeam;
+    if (fast || !sc.announce) return;
+    if (!msg) return announceTurn(sc.team, mine);
+    toast(msg, 'overtake');
+    return wait(reduceMotion ? 300 : 1400).then(function () { return announceTurn(sc.team, mine); });
   }
 
   V.setPresence = function (map) {
@@ -482,12 +574,12 @@
       renderPanel();
       var mine = ctx.role === 'team' && sc.team === ctx.myTeam;
       setStatus(canAct(sc) ? (ctx.role === 'team' ? '우리 모둠이 주사위를 굴릴 차례예요.' : '주사위를 굴려 주세요.') : teamName(sc.team) + '이(가) 주사위를 굴릴 차례예요.');
-      if (!fast && sc.announce) return announceTurn(sc.team, mine);
+      if (sc.announce || fast) return turnStart(sc, fast);
     },
     reflect: function (sc, fast) {
       renderPanel();
       showReflect(sc);
-      if (!fast && sc.announce) return announceTurn(sc.team, ctx.role === 'team' && sc.team === ctx.myTeam);
+      if (sc.announce || fast) return turnStart(sc, fast);
     },
     roll: function (sc, fast) {
       closeModal();
@@ -817,6 +909,7 @@
     var ox = isQuiz && items.every(function (o) { return o.label === 'O' || o.label === 'X'; });
     var body = cardHead(card, sc.team) +
       (isQuiz ? '<p class="question">' + esc(card.question) + '</p>' : '') +
+      othersBox(sc) +
       (!isQuiz && cfg.discussionSeconds ? '<div class="timer"><div class="timer-bar" id="timer-bar"></div><span id="timer-text"></span></div>' : '') +
       (mine ? '<p class="hint">' + (isQuiz ? '모둠이 의논해서 답을 골라 주세요.' : '정답은 하나가 아니에요. 모둠이 이야기해서 하나를 골라 주세요.') + '</p>' : watchNote(sc)) +
       '<div class="choices' + (ox ? ' ox' : '') + '">' + items.map(function (c, i) {
@@ -844,6 +937,17 @@
       this.disabled = true;
       act('confirm');
     });
+  }
+
+  // 다른 모둠이 먼저 푼 딜레마: 선택지별 비율만 (어느 모둠이 골랐는지, 점수는 보여 주지 않음)
+  function othersBox(sc) {
+    if (!sc.others || !classroom() || !sc.card.choices) return '';
+    var rows = sc.card.choices.map(function (c, i) {
+      var p = sc.others.percents[i] || 0;
+      return '<div class="others-row"><span class="others-label">' + esc(c.label) + '</span>' +
+        '<span class="others-bar"><i style="width:' + p + '%"></i></span><b>' + p + '%</b></div>';
+    }).join('');
+    return '<div class="others"><p class="others-title">다른 모둠은 이렇게 선택했어요 <small>' + sc.others.teams + '모둠 참고</small></p>' + rows + '</div>';
   }
 
   function updateCardSelection(sc) {
@@ -1059,9 +1163,12 @@
     var n = sum.tokens.length;
     var nameOf = function (i) { return n === 1 ? '우리 모둠' : (i + 1) + '모둠'; };
 
+    var ranks = classroom() ? rankMap(sum.tokens) : null;
+    var allTied = ranks && Object.keys(ranks).every(function (k) { return ranks[k] === 1; });
     var tokenCards = sum.tokens.map(function (t) {
+      var rankChip = ranks ? '<span class="chip rank">' + (ranks[t.id] === 1 && !allTied ? CROWN + ' ' : '') + ranks[t.id] + '위</span>' : '';
       return '<div class="result-token" style="--tc:' + teamColor(t.id) + '">' +
-        '<h3><span class="dot big" style="--c:' + teamColor(t.id) + '"></span>' + esc(nameOf(t.id)) + '</h3>' +
+        '<h3><span class="dot big" style="--c:' + teamColor(t.id) + '"></span>' + esc(nameOf(t.id)) + rankChip + '</h3>' +
         '<div class="big-scores">' +
           '<div class="big-score trust">' + ICONS.trust + '<small>' + esc(label('trust')) + '</small><b>' + t.trust + '</b></div>' +
           '<div class="big-score judgment">' + ICONS.judgment + '<small>' + esc(label('judgment')) + '</small><b>' + t.judgment + '</b></div>' +

@@ -52,6 +52,15 @@ window.GAME_CONFIG = {
   },
   defaultSpeed: 'slow',
 
+  // 학급 함께하기에서만 쓰는 모둠 간 경쟁 요소 (기기 하나로 하기에서는 모두 꺼짐)
+  classroom: {
+    ranking: true,              // 실시간 순위표 (1등 왕관)
+    rankBy: 'score',            // 'score' = 신뢰+판단력 합계, 같으면 더 앞선 칸 / 'position' = 더 앞선 칸
+    overtakeAlerts: true,       // "2모둠이 1모둠을 추월했어요" 알림 (차례가 바뀔 때 한 번)
+    othersChoices: true,        // 다른 모둠이 먼저 푼 딜레마면 선택 비율 보여 주기
+    repeatDilemmaChance: 0.35   // 딜레마 칸에서 다른 모둠이 이미 푼 딜레마가 다시 나올 확률 (0이면 안 나옴)
+  },
+
   // 학급 함께하기(여러 태블릿 + 선생님 화면) 통신 설정
   // 공개 MQTT 중계 서버를 차례로 시도해 처음 연결되는 곳을 씀. 방 번호 첫 자리가 서버 번호
   net: {

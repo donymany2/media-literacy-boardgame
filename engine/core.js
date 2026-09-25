@@ -438,7 +438,8 @@
 
     var letters = 'ABCDEFG';
     if (card.type === 'dilemma') {
-      var choices = card.choices.map(variant);
+      // orig: 섞기 전 원래 순서 — 다른 모둠의 선택 비율을 셀 때 같은 선택지끼리 묶는 데 씀
+      var choices = card.choices.map(function (c, i) { var v = variant(c); v.orig = i; return v; });
       if (card.shuffle !== false) choices = BG.shuffle(choices, rng);
       choices.forEach(function (c, i) { c.label = letters[i]; });
       inst.choices = choices;
@@ -454,6 +455,27 @@
       inst.answer = opts.map(function (o) { return o.correct; }).indexOf(true);
     }
     return inst;
+  };
+
+  /* ---------- 순위 ----------
+   * 학급 함께하기의 실시간 순위표용. tokens: [{ pos, trust, judgment }]
+   * by 'score'(기본): 신뢰+판단력 합계가 높은 순, 같으면 더 앞선 칸
+   * by 'position'   : 더 앞선 칸 순, 같으면 점수 합계
+   * 점수와 칸이 모두 같으면 같은 등수
+   */
+  BG.rankTeams = function (tokens, by) {
+    var list = tokens.map(function (t, i) {
+      return { team: i, score: (t.trust || 0) + (t.judgment || 0), pos: t.pos || 1, finished: !!t.finished };
+    });
+    var cmp = by === 'position'
+      ? function (a, b) { return b.pos - a.pos || b.score - a.score || a.team - b.team; }
+      : function (a, b) { return b.score - a.score || b.pos - a.pos || a.team - b.team; };
+    list.sort(cmp);
+    list.forEach(function (x, k) {
+      var prev = list[k - 1];
+      x.rank = prev && prev.score === x.score && prev.pos === x.pos ? prev.rank : k + 1;
+    });
+    return list;
   };
 
   /* ---------- 효과 문구 ---------- */

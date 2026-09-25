@@ -942,3 +942,64 @@ body.my-turn .screen.game { box-shadow: inset 0 0 0 6px color-mix(in srgb, var(-
 @media (prefers-reduced-motion: reduce) {
   .result-box .comment, .delta-badge.show, .delta .count.pop { animation: none !important; opacity: 1; transform: none; }
 }
+
+/* ================= 학급 방 경쟁 요소 (개선 2) ================= */
+/* 실시간 순위표: 줄마다 자리를 --k로 정하고, 순위가 바뀌면 부드럽게 이동 */
+.scores.ranked { display: block; --rowh: 56px; }
+.ranking-head { display: flex; align-items: baseline; gap: 8px; margin: 2px 2px 6px; }
+.ranking-head b { font-family: var(--display); font-size: 1.1rem; letter-spacing: .03em; }
+.ranking-head small { color: var(--muted); font-size: .85rem; }
+.ranking { position: relative; height: calc(var(--n) * var(--rowh)); }
+.rank-row {
+  position: absolute; left: 0; right: 0; top: 0;
+  height: calc(var(--rowh) - 6px);
+  transform: translateY(calc(var(--k, 0) * var(--rowh)));
+  transition: transform .6s cubic-bezier(.3, 1.25, .5, 1);
+  display: grid; grid-template-columns: 30px auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px;
+  background: var(--paper); border: 2px solid var(--ink); border-radius: 12px; padding: 0 10px;
+}
+.rank-row.current { border-width: 3px; border-color: var(--tc); background: #fff; box-shadow: 3px 3px 0 var(--ink); animation: row-glow 1.4s ease-in-out infinite; }
+.rank-row.first { background: #FFF3C4; }
+.rank-row .rank-no { font-family: var(--numfont); font-size: 1.3rem; text-align: center; display: flex; align-items: center; justify-content: center; }
+.rank-row .crown { width: 28px; height: 22px; animation: crown-bob 2.4s ease-in-out infinite; }
+@keyframes crown-bob { 50% { transform: translateY(-2px) rotate(-6deg); } }
+.rank-row .who { display: flex; flex-direction: column; line-height: 1.1; white-space: nowrap; min-width: 0; overflow: hidden; }
+.rank-row .who em { font-style: normal; font-size: .72rem; line-height: 1.3; background: var(--tc); color: #fff; border-radius: 999px; padding: 0 6px; align-self: flex-start; order: -1; margin-bottom: 1px; }
+.rank-row .who small { font-size: .78rem; color: var(--muted); }
+
+/* 다른 모둠의 선택 비율 */
+.others { background: #fff; border: 2px dashed var(--event); border-radius: 14px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+.others-title { font-size: 1rem; color: var(--event); }
+.others-title small { color: var(--muted); font-size: .8rem; margin-left: 4px; }
+.others-row { display: grid; grid-template-columns: 26px 1fr 48px; align-items: center; gap: 8px; }
+.others-label { font-family: var(--display); text-align: center; }
+.others-bar { height: 14px; background: #EEF3FF; border: 2px solid var(--ink); border-radius: 999px; overflow: hidden; }
+.others-bar i { display: block; height: 100%; background: var(--event); border-radius: 999px; animation: bar-grow .8s ease-out both; }
+@keyframes bar-grow { from { width: 0; } }
+.others-row b { font-family: var(--numfont); font-weight: normal; font-size: 1.05rem; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* 추월 알림: 담백하게 정보만 */
+.toast.overtake { font-family: var(--font); font-size: clamp(1.05rem, 3.6vw, 1.35rem); letter-spacing: 0; background: var(--paper); color: var(--ink); border-width: 3px; box-shadow: 4px 4px 0 var(--ink); padding: 8px 20px; animation: fade-down .35s ease-out; }
+@keyframes fade-down { from { transform: translateY(-10px); opacity: 0; } }
+
+.chip.rank { margin-left: auto; font-family: var(--numfont); font-size: 1rem; display: inline-flex; align-items: center; gap: 4px; background: var(--paper); }
+.chip.rank .crown { width: 20px; height: 16px; }
+.result-token h3 { flex-wrap: wrap; }
+
+@media (orientation: portrait), (max-width: 760px) {
+  .scores.ranked { --rowh: 46px; display: block; }
+  .rank-row { gap: 6px; padding: 0 8px; }
+}
+@media (max-width: 480px) {
+  .scores.ranked { --rowh: 40px; }
+  .rank-row .who small { display: none; }
+  .ranking-head small { display: none; }
+}
+@media (orientation: landscape) and (max-height: 520px) {
+  .scores.ranked { --rowh: 40px; }
+  .rank-row .who small { display: none; }
+}
+.rank-row.mine { border-color: var(--tc); border-width: 3px; }
+@media (max-width: 480px), (orientation: landscape) and (max-height: 520px) {
+  .rank-row .who em { display: none; }
+}
