@@ -45,7 +45,11 @@ window.GAME_CONFIG = {
   discussionSeconds: 60,
 
   // 말이 한 칸 움직이는 시간(ms)
-  stepMs: 420,
+  stepMs: 840,
+
+  // 업로드로 올라가는 시간, 다운로드로 떨어지는 시간(ms)
+  upMs: 4500,
+  downMs: 4200,
 
   // 색 (1980년대 뱀주사위놀이판 느낌: 노란 바탕 + 굵은 남색 테두리)
   theme: {

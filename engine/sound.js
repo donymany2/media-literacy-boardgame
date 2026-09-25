@@ -99,15 +99,29 @@
     tone(t, 0.08, 160, 110, 'sine', 0.25);
   };
 
-  // 업로드 오르는 중: 사다리를 한 칸씩 밟는 소리가 점점 높아지고, 바람 소리가 올라감
+  // 업로드 오르는 중: "끙-차" 하고 사다리를 한 칸씩 밟는 소리가 점점 높아지고,
+  // 바람 소리가 올라가다가 꼭대기 직전에 북소리가 빨라짐
   S.climb = function (dur) {
     if (!ready()) return;
-    var t = ctx.currentTime, steps = Math.max(6, Math.round(dur / 0.16));
+    var t = ctx.currentTime, steps = Math.max(8, Math.round(dur / 0.3));
     for (var i = 0; i < steps; i++) {
-      var f = 330 * Math.pow(2, i / steps * 1.6);
-      tone(t + i * dur / steps, 0.09, f, f * 1.12, 'square', 0.07);
+      var at = t + i * dur / steps;
+      var f = 220 * Math.pow(2, i / steps * 1.8);
+      tone(at, 0.12, f, f * 1.05, 'square', 0.06);
+      tone(at + 0.13, 0.1, f * 1.5, f * 1.6, 'triangle', 0.08);
     }
-    tone(t, dur, 200, 900, 'sine', 0.06);
+    var o = tone(t, dur, 180, 1100, 'sine', 0.05);
+    var lfo = ctx.createOscillator(), lg = ctx.createGain();
+    lfo.frequency.value = 5; lg.gain.value = 18;
+    lfo.connect(lg); lg.connect(o.frequency);
+    lfo.start(t); lfo.stop(t + dur);
+    // 마지막 1/3: 북소리가 점점 빨라짐
+    var start = t + dur * 0.62, gap = 0.16;
+    for (var at2 = start; at2 < t + dur - 0.02; at2 += gap) {
+      knock(at2, 0.06, 220, 0.35);
+      tone(at2, 0.08, 120, 80, 'sine', 0.2);
+      gap = Math.max(0.045, gap * 0.86);
+    }
   };
 
   // 환호: 박수 소리 + 여러 목소리의 "와아~"
@@ -136,15 +150,48 @@
     }
   };
 
-  // 다운로드 떨어지는 중: 길게 내려가는 미끄럼 휘파람
+  // 다운로드 떨어지는 중: 길게 내려가는 미끄럼 휘파람 + "으아아아~" 비명 + 바람 소리
   S.fall = function (dur) {
     if (!ready()) return;
     var t = ctx.currentTime;
-    var o = tone(t, dur, 1200, 140, 'triangle', 0.22);
+    var o = tone(t, dur, 1300, 120, 'triangle', 0.2);
     var lfo = ctx.createOscillator(), lg = ctx.createGain();
     lfo.frequency.value = 7; lg.gain.value = 35;
     lfo.connect(lg); lg.connect(o.frequency);
     lfo.start(t); lfo.stop(t + dur + 0.05);
+
+    // 목소리 같은 비명: 톱니파를 모음 소리처럼 걸러서 흔들며 내림
+    var v = ctx.createOscillator(), vf = ctx.createBiquadFilter(), vg = ctx.createGain();
+    v.type = 'sawtooth';
+    v.frequency.setValueAtTime(620, t);
+    v.frequency.exponentialRampToValueAtTime(170, t + dur);
+    vf.type = 'bandpass'; vf.frequency.value = 900; vf.Q.value = 4;
+    vg.gain.setValueAtTime(0.0001, t);
+    vg.gain.exponentialRampToValueAtTime(0.09, t + 0.2);
+    vg.gain.setValueAtTime(0.09, t + dur * 0.7);
+    vg.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    var vl = ctx.createOscillator(), vlg = ctx.createGain();
+    vl.frequency.value = 6; vlg.gain.value = 22;
+    vl.connect(vlg); vlg.connect(v.frequency);
+    v.connect(vf); vf.connect(vg); vg.connect(master);
+    v.start(t); v.stop(t + dur + 0.05);
+    vl.start(t); vl.stop(t + dur + 0.05);
+
+    // 바람: 잡음이 점점 커짐
+    var src = ctx.createBufferSource(), nf = ctx.createBiquadFilter(), ng = ctx.createGain();
+    src.buffer = noiseBuf; src.loop = true;
+    nf.type = 'bandpass'; nf.Q.value = 0.8;
+    nf.frequency.setValueAtTime(400, t);
+    nf.frequency.linearRampToValueAtTime(1600, t + dur);
+    ng.gain.setValueAtTime(0.0001, t);
+    ng.gain.exponentialRampToValueAtTime(0.12, t + dur * 0.9);
+    ng.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(nf); nf.connect(ng); ng.connect(master);
+    src.start(t); src.stop(t + dur + 0.05);
+
+    // 바닥에 '쿵'
+    knock(t + dur - 0.02, 0.2, 150, 0.9);
+    tone(t + dur - 0.02, 0.35, 110, 45, 'sine', 0.5);
   };
 
   // 좌절: 트롬본 "빠밤빠밤~ 뿌우우"

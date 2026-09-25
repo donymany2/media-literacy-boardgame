@@ -98,6 +98,9 @@
 
   /* ================= 시작 ================= */
 
+  // 점검용: 현재 게임 상태 (테스트에서 사용)
+  UI.debugGame = function () { return game; };
+
   UI.start = function (config, p, overrides) {
     cfg = config;
     pack = p;
@@ -491,23 +494,31 @@
   async function animateJump(tokenIndex, from, to) {
     var up = game.tile(from).type === 'up';
     var el = $('#tokens [data-token="' + tokenIndex + '"]');
-    var dur = reduceMotion ? 300 : (up ? 2300 : 2100);
+    var dur = reduceMotion ? 300 : (up ? cfg.upMs || 4500 : cfg.downMs || 4200);
     if (up) sound.climb(dur / 1000); else sound.fall(dur / 1000);
-    if (el) el.classList.add('instant', up ? 'climbing' : 'falling');
+    if (el) {
+      el.style.setProperty('--jump', dur + 'ms');
+      el.classList.add('instant', up ? 'climbing' : 'falling');
+    }
     var half = el ? el.offsetWidth / 2 : 0;
     var t0 = performance.now();
     await new Promise(function (done) {
+      var finished = false;
+      // 화면이 잠깐 가려져 requestAnimationFrame이 멈춰도 이동이 끝나도록 타이머로도 진행
+      var backup = setInterval(function () { frame(performance.now()); }, 50);
       function frame(now) {
+        if (finished) return;
         var p = Math.min(1, (now - t0) / dur);
         // 오를 때는 한 칸씩 끙차끙차(계단식), 떨어질 때는 점점 빨라짐
-        var k = up ? (p + Math.sin(p * Math.PI * 10) * 0.018) : p * p;
+        var k = up ? (p + Math.sin(p * Math.PI * 16) * 0.012) : p * p;
         k = Math.max(0, Math.min(1, k));
         var pt = jumpPoint(from, k);
         if (el) {
           el.style.left = (pt.x - half) + 'px';
           el.style.top = (pt.y - half + view.cell * 0.06) + 'px';
         }
-        if (p < 1) requestAnimationFrame(frame); else done();
+        if (p < 1) requestAnimationFrame(frame);
+        else { finished = true; clearInterval(backup); done(); }
       }
       requestAnimationFrame(frame);
     });
@@ -525,6 +536,25 @@
       if (board && !reduceMotion) { board.classList.remove('shake'); void board.offsetWidth; board.classList.add('shake'); }
     }
     await wait(reduceMotion ? 200 : 1100);
+  }
+
+  // 업로드/다운로드 칸은 멈추지 않고 바로 이동
+  async function doJump(idx, land) {
+    var up = land.dir === 'up';
+    var labels = meta.tileLabels || {};
+    var from = game.tokens[idx].pos;
+    toast((up ? (labels.up || '지름길') : (labels.down || '미끄럼틀')) + '! ' + from + ' → ' + land.to, up ? 'up' : 'down');
+    game.applyJump();
+    await animateJump(idx, from, land.to);
+    renderPanel();
+  }
+
+  // 카드 결과로 움직인 칸이 업로드/다운로드 칸이면 이어서 이동 (카드는 다시 뽑지 않음)
+  async function followJump(idx) {
+    var land = game.landing();
+    if (land.kind !== 'jump') return;
+    await highlightTile(game.tokens[idx].pos);
+    await doJump(idx, land);
   }
 
   // 도착한 칸을 잠깐 반짝이게
@@ -602,14 +632,7 @@
     if (land.kind !== 'none' && land.kind !== 'finish') await highlightTile(move.to);
 
     if (land.kind === 'jump') {
-      // 업로드/다운로드 칸은 멈추지 않고 바로 이동
-      var up = land.dir === 'up';
-      var labels = meta.tileLabels || {};
-      toast((up ? (labels.up || '지름길') : (labels.down || '미끄럼틀')) + '! ' + move.to + ' → ' + land.to, up ? 'up' : 'down');
-      var from = move.to;
-      game.applyJump();
-      await animateJump(idx, from, land.to);
-      renderPanel();
+      await doJump(idx, land);
     } else if (land.kind === 'card') {
       // 카드의 문제·상황을 모두 해결한 뒤에 점수를 반영하고 말을 움직임
       var card = game.drawCard(land.deck);
@@ -620,6 +643,7 @@
         if (res.move) {
           await announceMove(res.move);
           await animatePath(idx, res.move.path);
+          await followJump(idx);
         }
       }
     } else if (land.kind === 'teacher') {
@@ -629,6 +653,7 @@
       if (tres.move) {
         await announceMove(tres.move);
         await animatePath(idx, tres.move.path);
+        await followJump(idx);
       }
     }
 
