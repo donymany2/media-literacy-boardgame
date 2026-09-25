@@ -17,7 +17,7 @@ var packId = process.argv[2] || 'media-literacy';
 var games = +(process.argv[3] || 500);
 
 // 추정용 시간(초): 주사위+이동 한 번, 카드 한 장(토의 포함), 선생님 칸, 되돌아보기
-var SEC = { roll: 20, card: 75, teacher: 60, reflect: 30 };
+var SEC = { roll: 15, dilemma: 90, quiz: 35, chance: 12, teacher: 60, reflect: 30 };
 
 function load(file) {
   vm.runInThisContext(fs.readFileSync(path.join(root, file), 'utf8'), { filename: file });
@@ -36,11 +36,12 @@ function check(cond, msg) {
 }
 
 var warnings = BG.validatePack(pack, sizes);
+var seenCards = {};
 console.log('카드팩: ' + (pack.meta && pack.meta.name) + ' (' + pack.cards.length + '장)');
 console.log(warnings.length ? '경고:\n  - ' + warnings.join('\n  - ') : '카드팩 검사: 경고 없음');
 
 sizes.forEach(function (size) {
-  [[1, 6], [2, 6], [4, 6], [1, 4]].forEach(function (variant) {
+  [[1, 6], [2, 6], [3, 6], [4, 6]].forEach(function (variant) {
     var tokenCount = variant[0], dieFaces = variant[1];
     var total = { rolls: 0, cards: 0, teacher: 0, reflect: 0, trust: 0, judgment: 0, sec: 0 };
     var maxSec = 0;
@@ -62,8 +63,10 @@ sizes.forEach(function (size) {
           var card = game.drawCard(land.deck);
           check(!!card, size + '칸: ' + land.deck + ' 카드를 뽑지 못함');
           var n = card.type === 'dilemma' ? card.choices.length : card.type === 'quiz' ? card.options.length : 1;
-          game.resolveCard(card, Math.floor(rng() * n));
-          total.cards++; sec += SEC.card;
+          check(card.type !== 'dilemma' || card.choices.every(function (c) { return c.text.indexOf('{') < 0; }), card.id + ' 조각이 채워지지 않음');
+          game.resolveCard(card, Math.floor(rng() * n), { reasoned: rng() < 0.7 });
+          total.cards++; sec += SEC[card.type];
+          seenCards[card.id] = 1;
         } else if (land.kind === 'teacher') {
           game.resolveTeacher(Math.floor(rng() * 3));
           total.teacher++; sec += SEC.teacher;
@@ -96,6 +99,21 @@ sizes.forEach(function (size) {
   console.log('\n자동 배치 ' + size + '칸: ' + JSON.stringify(types));
   check(b.tiles[1].type === 'start' && b.tiles[size].type === 'finish', '자동 배치 출발/도착');
 });
+
+console.log('\n시뮬레이션에서 한 번이라도 나온 카드: ' + Object.keys(seenCards).length + ' / ' + pack.cards.length + '장');
+var byType = {};
+pack.cards.forEach(function (c) { byType[c.type] = (byType[c.type] || 0) + 1; });
+console.log('카드 구성: ' + JSON.stringify(byType) + ', 바꿔 끼우는 카드 ' + pack.cards.filter(function (c) { return c.slots; }).length + '장');
+
+// 선택지 섞기: 같은 카드의 첫 선택지가 여러 위치에 나오는지
+var rng2 = BG.makeRng(7), positions = {};
+for (var i = 0; i < 300; i++) {
+  var inst = BG.instantiateCard(pack.cards[0], pack.meta, rng2);
+  positions[inst.choices.map(function (c) { return c.text; }).indexOf(BG.fillText(pack.cards[0].choices[0].text, {}))] = 1;
+}
+check(Object.keys(positions).length === 3, '선택지 섞기가 동작하지 않음');
+console.log('선택지 섞기: 첫 선택지가 나온 위치 ' + Object.keys(positions).join(', '));
+console.log(BG.fillText('{who:이/가} {where}에서 {who:을/를}', { who: '처음 보는 사람', where: '단톡방' }) + ' / ' + BG.fillText('{who:이/가}', { who: '동생' }));
 
 console.log(failures ? '\n실패 ' + failures + '건' : '\n모든 점검 통과');
 process.exit(failures ? 1 : 0);

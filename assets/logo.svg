@@ -1,12 +1,16 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
-  <!-- 임시 로고: 주사위 + 와이파이. config.js의 logo 경로를 바꿔 교체 -->
-  <rect x="14" y="30" width="62" height="62" rx="12" fill="#fff" stroke="#1E1E1E" stroke-width="5" transform="rotate(-8 45 61)"/>
-  <g fill="#1E1E1E" transform="rotate(-8 45 61)">
-    <circle cx="30" cy="46" r="6"/><circle cx="45" cy="61" r="6" fill="#E03E2D"/><circle cx="60" cy="76" r="6"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120">
+  <!-- 업다운 로드 로고: 구불구불한 길 + 업로드(초록 위 화살표) + 다운로드(보라 아래 화살표) + 주사위 -->
+  <path d="M10 104 C 40 104, 40 72, 72 72 S 108 40, 150 40" fill="none" stroke="#1B1A2E" stroke-width="22" stroke-linecap="round"/>
+  <path d="M10 104 C 40 104, 40 72, 72 72 S 108 40, 150 40" fill="none" stroke="#FFF7E0" stroke-width="14" stroke-linecap="round"/>
+  <path d="M10 104 C 40 104, 40 72, 72 72 S 108 40, 150 40" fill="none" stroke="#1B1A2E" stroke-width="2.5" stroke-dasharray="7 7" stroke-linecap="round"/>
+  <g stroke="#1B1A2E" stroke-width="4" stroke-linejoin="round">
+    <path d="M26 58 L42 34 L58 58 H48 V76 H36 V58 Z" fill="#16A35A"/>
+    <path d="M104 64 H116 V82 H126 L110 106 L94 82 H104 Z" fill="#7A3CE0"/>
   </g>
-  <g fill="none" stroke="#1E1E1E" stroke-width="6" stroke-linecap="round">
-    <path d="M78 34 a14 14 0 0 1 14 14"/>
-    <path d="M78 20 a28 28 0 0 1 28 28"/>
+  <g transform="rotate(-12 124 22)">
+    <rect x="108" y="6" width="32" height="32" rx="7" fill="#fff" stroke="#1B1A2E" stroke-width="4"/>
+    <circle cx="117" cy="15" r="3.2" fill="#1B1A2E"/>
+    <circle cx="124" cy="22" r="3.2" fill="#FF4D3D"/>
+    <circle cx="131" cy="29" r="3.2" fill="#1B1A2E"/>
   </g>
-  <circle cx="80" cy="46" r="5" fill="#1C7ED6" stroke="#1E1E1E" stroke-width="2"/>
 </svg>

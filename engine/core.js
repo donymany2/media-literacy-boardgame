@@ -111,16 +111,25 @@
       }
     });
 
-    // 칸 그림: 보통 칸은 카드팩의 그림 목록을 차례로 돌려 씀 → 칸마다 다른 그림
+    // fill: 남은 모든 칸을 사건 칸으로 채움 (카드 종류는 fill 목록을 차례로 돌려 씀)
+    if (layout.fill && layout.fill.length) {
+      var f = 0;
+      for (n = 2; n < size; n++) {
+        if (tiles[n].type === 'normal') {
+          tiles[n].type = 'event';
+          tiles[n].deck = layout.fill[f++ % layout.fill.length];
+        }
+      }
+    }
+
+    // 칸 그림: 보통 칸과 사건 칸은 카드팩의 그림 목록을 차례로 돌려 씀 → 칸마다 다른 그림
     var art = (pack.meta && pack.meta.tileArt) || {};
     var pool = art.normal || [''];
     var k = 0;
     for (n = 1; n <= size; n++) {
       var tile = tiles[n];
-      if (tile.type === 'normal') {
+      if (tile.type === 'normal' || tile.type === 'event') {
         tile.art = pool[k++ % pool.length];
-      } else if (tile.type === 'event') {
-        tile.art = (art.deck && art.deck[tile.deck]) || art.event || '';
       } else {
         tile.art = art[tile.type] || '';
       }
@@ -140,7 +149,7 @@
     var used = {};
     used[1] = used[size] = true;
     var events = {};
-    var eventCount = Math.round(size * eventRatio);
+    var eventCount = rules.fill ? 0 : Math.round(size * eventRatio);
     var inner = size - 2;
     for (var i = 0; i < eventCount; i++) {
       var pos = 2 + Math.floor((i + 0.5) * inner / eventCount);
@@ -179,7 +188,7 @@
       jumps.push({ from: from, to: to });
     }
 
-    return { events: events, teacher: teacher, jumps: jumps, generated: true };
+    return { events: events, teacher: teacher, jumps: jumps, fill: rules.fill ? deckPattern : null, generated: true };
   };
 
   /* ---------- 카드팩 검사 ----------
@@ -205,6 +214,13 @@
         if (typeof c.answer !== 'number' || !c.options || !c.options[c.answer]) warnings.push(where + ': 퀴즈 정답(answer) 번호가 올바르지 않습니다.');
       }
       if (c.type === 'chance' && !c.effect) warnings.push(where + ': 기회/위기 카드는 effect가 필요합니다.');
+      var slotDefs = (pack.meta && pack.meta.slots) || {};
+      Object.keys(c.slots || {}).forEach(function (slot) {
+        if (!slotDefs[slot]) warnings.push(where + ': 알 수 없는 바꿔 끼우기 조각 "' + slot + '"');
+        else c.slots[slot].forEach(function (v) {
+          if (!slotDefs[slot][v]) warnings.push(where + ': 조각 ' + slot + '에 "' + v + '" 값이 없습니다.');
+        });
+      });
       if (c.topic && pack.meta && pack.meta.topics && !pack.meta.topics[c.topic]) warnings.push(where + ': 알 수 없는 주제(topic) "' + c.topic + '"');
     });
 
@@ -212,10 +228,7 @@
       var board = BG.buildBoard(pack, size);
       var counts = {};
       for (var n = 1; n <= size; n++) counts[board.tiles[n].type] = (counts[board.tiles[n].type] || 0) + 1;
-      var ratio = (counts.event || 0) / size;
-      if (ratio < 0.3 || ratio > 0.35) {
-        warnings.push(size + '칸 판: 사건 칸 비율 ' + Math.round(ratio * 100) + '% (권장 30~35%)');
-      }
+      if (!counts.event) warnings.push(size + '칸 판: 사건 칸이 하나도 없습니다.');
       (board.layout.jumps || []).forEach(function (j) {
         if (j.from <= 1 || j.from >= size) warnings.push(size + '칸 판: ' + j.from + '번 칸에는 지름길/미끄럼틀을 둘 수 없습니다.');
         var dest = board.tiles[j.to];
@@ -223,6 +236,89 @@
       });
     });
     return warnings;
+  };
+
+  /* ---------- 바꿔 끼우는 카드(틀 카드) ----------
+   * 문장 속 {who}, {where} 자리에 조각을 넣음. {who:이/가}처럼 쓰면 받침에 맞는 조사를 붙임.
+   *   '{who:이/가} 물어봅니다' → '친한 친구가 물어봅니다' / '처음 보는 사람이 물어봅니다'
+   */
+  function hasBatchim(word) {
+    var ch = String(word).trim().slice(-1).charCodeAt(0);
+    if (ch < 0xAC00 || ch > 0xD7A3) return { yes: false, rieul: false };
+    var jong = (ch - 0xAC00) % 28;
+    return { yes: jong !== 0, rieul: jong === 8 };
+  }
+
+  BG.fillText = function (text, values) {
+    if (!text || !values) return text;
+    return String(text).replace(/\{(\w+)(?::([^}]+))?\}/g, function (all, slot, josa) {
+      if (!(slot in values)) return all;
+      var word = values[slot];
+      if (!josa) return word;
+      var pair = josa.split('/');
+      var b = hasBatchim(word);
+      if (pair[0] === '으로') return word + (b.yes && !b.rieul ? '으로' : '로');
+      return word + (b.yes ? pair[0] : pair[1]);
+    });
+  };
+
+  /* ---------- 카드 한 장 꺼내기 ----------
+   * 원본 카드는 그대로 두고, 이번에 쓸 복사본을 만듦
+   *  1) 바꿔 끼우는 조각(slots)을 무작위로 고르고 문장을 채움
+   *  2) 조각에 따라 선택지 결과가 달라지면(by) 그 결과로 바꿈
+   *  3) 선택지 순서를 섞고 A, B, C 이름을 다시 붙임 (shuffle: false면 섞지 않음)
+   */
+  BG.instantiateCard = function (card, meta, rng) {
+    var slotDefs = (meta && meta.slots) || {};
+    var picked = {}, values = {};
+    Object.keys(card.slots || {}).forEach(function (slot) {
+      var options = card.slots[slot];
+      var key = options[Math.floor(rng() * options.length)];
+      picked[slot] = key;
+      values[slot] = (slotDefs[slot] && slotDefs[slot][key]) || key;
+    });
+    var fill = function (t) { return BG.fillText(t, values); };
+
+    var inst = {};
+    Object.keys(card).forEach(function (k) { inst[k] = card[k]; });
+    inst.source = card;
+    inst.picked = picked;
+    inst.title = fill(card.title);
+    inst.situation = fill(card.situation);
+    if (card.question) inst.question = fill(card.question);
+    if (card.feedback) inst.feedback = fill(card.feedback);
+    if (card.explanation) inst.explanation = fill(card.explanation);
+
+    function variant(c) {
+      var out = { text: fill(c.text), effect: c.effect || {}, feedback: fill(c.feedback || '') };
+      Object.keys(c.by || {}).forEach(function (slot) {
+        var o = c.by[slot][picked[slot]];
+        if (o) {
+          if (o.effect) out.effect = o.effect;
+          if (o.feedback) out.feedback = fill(o.feedback);
+        }
+      });
+      return out;
+    }
+
+    var letters = 'ABCDEFG';
+    if (card.type === 'dilemma') {
+      var choices = card.choices.map(variant);
+      if (card.shuffle !== false) choices = BG.shuffle(choices, rng);
+      choices.forEach(function (c, i) { c.label = letters[i]; });
+      inst.choices = choices;
+    } else if (card.type === 'quiz') {
+      var opts = card.options.map(function (o, i) {
+        return { label: o.label, text: fill(o.text), correct: i === card.answer };
+      });
+      if (card.shuffle !== false) {
+        opts = BG.shuffle(opts, rng);
+        opts.forEach(function (o, i) { o.label = letters[i]; });
+      }
+      inst.options = opts;
+      inst.answer = opts.map(function (o) { return o.correct; }).indexOf(true);
+    }
+    return inst;
   };
 
   /* ---------- 효과 문구 ---------- */

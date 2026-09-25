@@ -116,8 +116,10 @@
     return move;
   };
 
+  // 카드를 뽑아 이번 판에 쓸 복사본으로 만듦(조각 바꿔 끼우기, 선택지 섞기)
   Game.prototype.drawCard = function (deck) {
-    return this.decks.draw(deck);
+    var card = this.decks.draw(deck);
+    return card ? BG.instantiateCard(card, this.pack.meta, this.rng) : null;
   };
 
   // 카드의 선택 결과를 구함(아직 적용 전). 화면에서 결과를 보여줄 때 사용.
@@ -138,12 +140,22 @@
     return { effect: card.effect || {}, feedback: card.feedback || '' };
   };
 
-  // 카드 결과를 점수와 위치에 적용
-  Game.prototype.resolveCard = function (card, choiceIndex) {
+  // 이유 말하기 보너스 (딜레마 카드에서 고른 이유를 말하면)
+  Game.prototype.reasonBonus = function () {
+    var def = this.pack.meta.reason;
+    return def && def.enabled !== false ? (def.bonus || { judgment: 1 }) : null;
+  };
+
+  // 카드 결과를 점수와 위치에 적용. opts.reasoned: 고른 이유를 말했는지
+  Game.prototype.resolveCard = function (card, choiceIndex, opts) {
+    opts = opts || {};
     var outcome = this.outcomeOf(card, choiceIndex);
+    var bonus = opts.reasoned && card.type === 'dilemma' ? this.reasonBonus() : null;
+    if (bonus) this._applyEffect(bonus);
     var move = this._applyEffect(outcome.effect, {
+      type: card.type,
       title: card.title,
-      choice: outcome.choice ? (outcome.choice.label ? outcome.choice.label + '. ' : '') + outcome.choice.text : ''
+      choice: outcome.choice ? outcome.choice.text : ''
     });
     this._record({
       kind: 'card',
@@ -153,6 +165,7 @@
       title: card.title,
       choice: outcome.choice ? outcome.choice.text : null,
       correct: outcome.correct,
+      reasoned: !!bonus,
       effect: outcome.effect
     });
     outcome.move = move;
@@ -190,7 +203,9 @@
       move = this.moveBy(effect.move, token);
       // 카드 선택으로 미끄러졌으면 다음 차례 시작에 되돌아보기
       var reflectOn = !this.pack.meta.reflect || this.pack.meta.reflect.enabled !== false;
-      if (effect.move < 0 && reflectOn && source && move.to !== move.from) {
+      // 신뢰를 잃고 미끄러진 선택만 되돌아보기 (신중하느라 늦어진 경우, 돌발 상황의 운은 제외)
+      var mistake = effect.move < 0 && (effect.trust || 0) < 0;
+      if (mistake && reflectOn && source && source.type !== 'chance' && move.to !== move.from) {
         token.reflect = { title: source.title, choice: source.choice, slid: move.from - move.to };
       }
     }
