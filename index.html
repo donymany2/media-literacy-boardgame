@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#FFD43B">
+  <title>디지털 뱀주사위놀이</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&display=swap">
+  <link rel="stylesheet" href="engine/style.css">
+</head>
+<body>
+  <main id="app">
+    <p class="loading">불러오는 중...</p>
+  </main>
+  <div id="modal-root"></div>
+  <div id="toast-root" aria-live="polite"></div>
+
+  <!-- 1) 설정  2) 엔진  3) 카드팩(loader.js가 config.pack에 맞춰 자동으로 불러옴) -->
+  <script src="config.js"></script>
+  <script src="engine/core.js"></script>
+  <script src="engine/game.js"></script>
+  <script src="engine/ui.js"></script>
+  <script src="engine/loader.js"></script>
+</body>
+</html>
