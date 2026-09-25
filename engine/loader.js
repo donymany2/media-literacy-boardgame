@@ -21,20 +21,22 @@
     });
   }
 
-  BG.PACK_FILES.reduce(function (p, file) {
-    return p.then(function () { return loadScript('packs/' + packId + '/' + file); });
-  }, Promise.resolve())
+  // pack.js를 먼저 읽고, 그 안에 적힌 파일 목록(meta.files)을 차례로 읽음
+  loadScript('packs/' + packId + '/pack.js')
+    .then(function () {
+      return BG.packFiles(BG.packs[packId]).reduce(function (p, file) {
+        return p.then(function () { return loadScript('packs/' + packId + '/' + file); });
+      }, Promise.resolve());
+    })
     .then(function () {
       var pack = BG.packs[packId];
       var warnings = BG.validatePack(pack, config.modes.map(function (m) { return m.size; }));
       if (warnings.length) console.warn('[카드팩 검사]\n- ' + warnings.join('\n- '));
-      BG.UI.start(config, pack, {
-        mode: params.get('mode'),
-        tokens: params.get('tokens')
-      });
+      BG.App.start(config, pack, params);
     })
     .catch(function (err) {
       document.getElementById('app').innerHTML =
         '<div class="panel error"><h2>카드팩을 불러오지 못했어요</h2><p>' + err.message + '</p></div>';
+      console.error(err);
     });
 })();

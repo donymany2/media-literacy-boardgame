@@ -25,7 +25,8 @@ function load(file) {
 
 load('engine/core.js');
 load('engine/game.js');
-BG.PACK_FILES.forEach(function (f) { load('packs/' + packId + '/' + f); });
+load('packs/' + packId + '/pack.js');
+BG.packFiles(BG.packs[packId]).forEach(function (f) { load('packs/' + packId + '/' + f); });
 
 var pack = BG.packs[packId];
 var sizes = [40, 25];
@@ -108,10 +109,12 @@ console.log('카드 구성: ' + JSON.stringify(byType) + ', 바꿔 끼우는 카
 // 선택지 섞기: 같은 카드의 첫 선택지가 여러 위치에 나오는지
 var rng2 = BG.makeRng(7), positions = {};
 for (var i = 0; i < 300; i++) {
-  var inst = BG.instantiateCard(pack.cards[0], pack.meta, rng2);
-  positions[inst.choices.map(function (c) { return c.text; }).indexOf(BG.fillText(pack.cards[0].choices[0].text, {}))] = 1;
+  var d0 = pack.cards.filter(function (c) { return c.type === 'dilemma'; })[0];
+  var inst = BG.instantiateCard(d0, pack.meta, rng2);
+  positions[inst.choices.map(function (c) { return c.text; }).indexOf(BG.fillText(d0.choices[0].text, {}))] = 1;
 }
-check(Object.keys(positions).length === 3, '선택지 섞기가 동작하지 않음');
+var firstDilemma = pack.cards.filter(function (c) { return c.type === 'dilemma'; })[0];
+check(!firstDilemma || Object.keys(positions).length === firstDilemma.choices.length, '선택지 섞기가 동작하지 않음');
 console.log('선택지 섞기: 첫 선택지가 나온 위치 ' + Object.keys(positions).join(', '));
 console.log(BG.fillText('{who:이/가} {where}에서 {who:을/를}', { who: '처음 보는 사람', where: '단톡방' }) + ' / ' + BG.fillText('{who:이/가}', { who: '동생' }));
 

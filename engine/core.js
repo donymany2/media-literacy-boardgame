@@ -14,11 +14,20 @@
    *   BG.registerPack('media-literacy', 'cards', [...]);  // cards.js
    *   BG.registerPack('media-literacy', 'board', {...});  // board.js
    */
+  // pack.js를 먼저 읽고, 그 안의 meta.files 목록(없으면 아래 기본값)을 차례로 읽음
   BG.PACK_FILES = ['pack.js', 'cards.js', 'board.js'];
+  BG.DEFAULT_PACK_PARTS = ['cards.js', 'board.js'];
 
+  BG.packFiles = function (pack) {
+    return (pack && pack.meta && pack.meta.files) || BG.DEFAULT_PACK_PARTS;
+  };
+
+  // 카드와 그림은 여러 파일로 나눠 등록해도 합쳐짐 (cards.js, cards-2.js ...)
   BG.registerPack = function (id, part, data) {
     var pack = BG.packs[id] = BG.packs[id] || { id: id };
-    pack[part] = data;
+    if (part === 'cards' && Array.isArray(pack.cards) && Array.isArray(data)) pack.cards = pack.cards.concat(data);
+    else if (part === 'art' && pack.art && data) Object.keys(data).forEach(function (k) { pack.art[k] = data[k]; });
+    else pack[part] = data;
     return pack;
   };
 
@@ -408,7 +417,6 @@
 
     var inst = {};
     Object.keys(card).forEach(function (k) { inst[k] = card[k]; });
-    inst.source = card;
     inst.picked = picked;
     inst.title = fill(card.title);
     inst.situation = fill(card.situation);

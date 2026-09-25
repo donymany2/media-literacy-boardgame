@@ -45,16 +45,29 @@ BG.registerPack('media-literacy', 'meta', {
   scoreLabels: { trust: '신뢰', judgment: '판단력' },
   scoring: { trustStart: 10, judgmentStart: 0, min: 0 },
 
-  // 칸 그림 — 칸마다 다른 사물이 그려짐. 이모지 대신 이미지 경로도 사용 가능
+  // 이 카드팩을 이루는 파일 (pack.js 다음에 차례로 읽음)
+  files: ['art.js', 'cards.js', 'cards-2.js', 'cards-3.js', 'board.js'],
+
+  // 칸 그림 — 'svg:이름'은 art.js에 직접 그린 그림. 이모지나 이미지 경로도 쓸 수 있음
   tileArt: {
-    start: '🏠',
-    finish: '🏁',
-    teacher: '🙋',
-    up: '🚀',
-    down: '🐛',
-    normal: ['📱', '💻', '🎧', '📷', '🛰️', '🎮', '⌨️', '🖱️', '📺', '💾', '🔍', '📰',
-             '🎬', '🔒', '🌐', '✉️', '💬', '🔋', '📡', '🤖', '🎵', '🗺️', '⏰', '📚',
-             '🕹️', '📸', '🧭', '🔑', '🖨️', '📀', '🎙️', '📟']
+    start: 'svg:start',
+    finish: 'svg:finish',
+    teacher: 'svg:teacher',
+    up: 'svg:rocket',
+    down: 'svg:snake',
+    // 사건 칸 — 차례로 돌려 써서 칸마다 다른 디지털 친구가 나옴
+    normal: ['svg:phone', 'svg:laptop', 'svg:camera', 'svg:robot', 'svg:chat', 'svg:detective', 'svg:lock', 'svg:wifi',
+             'svg:gamepad', 'svg:mail', 'svg:tv', 'svg:bell', 'svg:headphone', 'svg:heart', 'svg:star', 'svg:cloud',
+             'svg:battery', 'svg:book']
+  },
+
+  // 카드 그림 — 딜레마·퀴즈는 주제별 장면, 돌발 상황·되돌아보기·선생님은 종류별 장면
+  cardArt: {
+    topics: {
+      source: 'svg:card-source', deepfake: 'svg:card-deepfake', privacy: 'svg:card-privacy',
+      etiquette: 'svg:card-etiquette', algorithm: 'svg:card-algorithm', ad: 'svg:card-ad'
+    },
+    types: { chance: 'svg:card-chance', reflect: 'svg:card-reflect', teacher: 'svg:card-teacher', quiz: 'svg:card-quiz' }
   },
 
   // 판 위 이름표 (지름길 = 업로드, 미끄럼틀 = 다운로드)

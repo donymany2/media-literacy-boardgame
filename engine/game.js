@@ -26,7 +26,9 @@
     this.dieFaces = opts.dieFaces || 6;
     this.rng = opts.rng || Math.random;
     // randomBoard: 게임마다 업로드·다운로드 위치와 카드 종류를 새로 배치
-    var layout = opts.randomBoard ? BG.randomLayout(opts.size, (pack.board || {}).randomRules, this.rng) : null;
+    // layout: 이미 정해진 배치(이어하기, 다른 기기와 같은 판)를 그대로 쓸 때
+    var layout = opts.layout || (opts.randomBoard ? BG.randomLayout(opts.size, (pack.board || {}).randomRules, this.rng) : null);
+    this.layout = layout || null;
     this.board = BG.buildBoard(pack, opts.size, layout);
     this.decks = new BG.DeckSet(pack.cards || [], this.rng, opts.cardMemory);
     this.scoring = {
@@ -53,6 +55,37 @@
     this.over = false;
     this.log = [];             // 결과 화면의 '우리가 만난 카드' 목록
   }
+
+  // 저장·이어하기용: 진행 상태를 JSON으로 (카드 더미 순서는 저장하지 않고 새로 섞음)
+  Game.prototype.toJSON = function () {
+    return {
+      size: this.size, endWhen: this.endWhen, dieFaces: this.dieFaces, layout: this.layout,
+      tokens: this.tokens, current: this.current, finishCount: this.finishCount, over: this.over, log: this.log
+    };
+  };
+
+  Game.restore = function (pack, data, extra) {
+    var opts = { pack: pack, size: data.size, tokens: data.tokens.length, endWhen: data.endWhen, dieFaces: data.dieFaces, layout: data.layout };
+    Object.keys(extra || {}).forEach(function (k) { opts[k] = extra[k]; });
+    var g = new Game(opts);
+    g.tokens = JSON.parse(JSON.stringify(data.tokens));
+    g.current = data.current;
+    g.finishCount = data.finishCount || 0;
+    g.over = !!data.over;
+    g.log = data.log || [];
+    return g;
+  };
+
+  // 화면에 보여줄 말 상태만 간단히
+  Game.prototype.snap = function () {
+    return {
+      tokens: this.tokens.map(function (t) {
+        return { pos: t.pos, trust: t.trust, judgment: t.judgment, rolls: t.rolls, finished: t.finished, reflect: !!t.reflect };
+      }),
+      current: this.current,
+      over: this.over
+    };
+  };
 
   Game.prototype.currentToken = function () {
     return this.tokens[this.current];

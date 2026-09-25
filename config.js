@@ -44,12 +44,26 @@ window.GAME_CONFIG = {
   // 딜레마 카드 토의 시간(초). 0이면 타이머 숨김. 시간이 지나도 강제로 넘어가지 않음
   discussionSeconds: 60,
 
-  // 말이 한 칸 움직이는 시간(ms)
-  stepMs: 840,
+  // 말 속도 — 시작 화면에서 고름. stepMs 한 칸 이동, upMs 업로드 오르기, downMs 다운로드 떨어지기, diceMs 주사위 굴리기 (1000 = 1초)
+  speeds: {
+    fast:   { label: '빠르게', stepMs: 450,  upMs: 2500, downMs: 2300, diceMs: 900 },
+    normal: { label: '보통',   stepMs: 840,  upMs: 4500, downMs: 4200, diceMs: 1100 },
+    slow:   { label: '느리게', stepMs: 1680, upMs: 9000, downMs: 8400, diceMs: 2200 }
+  },
+  defaultSpeed: 'slow',
 
-  // 업로드로 올라가는 시간, 다운로드로 떨어지는 시간(ms)
-  upMs: 4500,
-  downMs: 4200,
+  // 학급 함께하기(여러 태블릿 + 선생님 화면) 통신 설정
+  // 공개 MQTT 중계 서버를 차례로 시도해 처음 연결되는 곳을 씀. 방 번호 첫 자리가 서버 번호
+  net: {
+    mqttLib: 'engine/vendor/mqtt.min.js',     // MQTT.js 5.10.1 (MIT)
+    qrLib: 'engine/vendor/qrcode.min.js',     // QRCode.js 1.0.0 (MIT)
+    connectTimeoutMs: 7000,
+    brokers: [
+      { url: 'wss://broker.emqx.io:8084/mqtt' },
+      { url: 'wss://broker.hivemq.com:8884/mqtt' },
+      { url: 'wss://public.cloud.shiftr.io', username: 'public', password: 'public' }
+    ]
+  },
 
   // 색 (1980년대 뱀주사위놀이판 느낌: 노란 바탕 + 굵은 남색 테두리)
   theme: {

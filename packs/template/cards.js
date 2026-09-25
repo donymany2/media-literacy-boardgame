@@ -7,13 +7,15 @@ BG.registerPack('template', 'cards', [
     id: 'T-01', type: 'dilemma', topic: 'topicA',
     title: '카드 제목',
     situation: '상황 설명',
+    // 선택지는 3개, 모두 일리가 있게. 순서는 게임에서 자동으로 섞임
     choices: [
-      { label: 'A', text: '선택지 A', effect: { trust: -2, move: -2 }, feedback: '결과 설명' },
-      { label: 'B', text: '선택지 B', effect: { trust: 2, judgment: 1, move: 2 }, feedback: '결과 설명' }
+      { text: '선택지 1', effect: { trust: 2, judgment: 0, move: 0 }, feedback: '결과 설명' },
+      { text: '선택지 2', effect: { trust: 1, judgment: 2, move: 0 }, feedback: '결과 설명' },
+      { text: '선택지 3', effect: { trust: -1, judgment: 0, move: 2 }, feedback: '결과 설명' }
     ]
   },
   {
-    id: 'T-02', type: 'quiz', topic: 'topicB',
+    id: 'T-02', type: 'quiz', topic: 'topicB', shuffle: false,   // O/X는 순서 고정
     title: '퀴즈 제목',
     situation: '상황 설명',
     question: 'O/X 문제',

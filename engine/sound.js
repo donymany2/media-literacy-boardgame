@@ -31,6 +31,13 @@
   }
 
   S.unlock = function () { ac(); };
+
+  // 저장된 선택이 없을 때만 기본값을 정함 (모둠 태블릿은 기본으로 소리 끔)
+  S.setDefaultMuted = function (v) {
+    var stored = null;
+    try { stored = localStorage.getItem(KEY); } catch (e) { /* 무시 */ }
+    if (stored === null) muted = !!v;
+  };
   S.isMuted = function () { return muted; };
   S.setMuted = function (v) {
     muted = !!v;
@@ -65,15 +72,19 @@
   }
 
   // 주사위: 손 안에서 달그락 → 판 위에서 통통 튀다가 멈춤
-  S.dice = function () {
+  S.dice = function (dur) {
     if (!ready()) return;
+    dur = dur || 1;
     var t = ctx.currentTime;
-    for (var i = 0; i < 7; i++) knock(t + i * 0.045 + Math.random() * 0.02, 0.03, 2600 + Math.random() * 1400, 0.35);
-    var gaps = [0.40, 0.55, 0.66, 0.74, 0.80, 0.85];
+    // 손 안에서 달그락 (전체 시간의 40%)
+    var shake = dur * 0.4, n = Math.round(shake / 0.05);
+    for (var i = 0; i < n; i++) knock(t + i * shake / n + Math.random() * 0.02, 0.03, 2600 + Math.random() * 1400, 0.3);
+    // 판 위에서 통통 튀며 점점 짧아짐
+    var gaps = [0.47, 0.62, 0.74, 0.83, 0.9, 0.95, 0.985];
     gaps.forEach(function (g, k) {
-      var v = 0.9 - k * 0.13;
-      knock(t + g, 0.05, 1800 + Math.random() * 900, v);
-      tone(t + g, 0.07, 190 - k * 12, 120, 'sine', 0.35 * v);
+      var v = 0.9 - k * 0.11;
+      knock(t + g * dur, 0.05, 1800 + Math.random() * 900, v);
+      tone(t + g * dur, 0.07, 190 - k * 12, 120, 'sine', 0.35 * v);
     });
   };
 
@@ -150,46 +161,47 @@
     }
   };
 
-  // 다운로드 떨어지는 중: 길게 내려가는 미끄럼 휘파람 + "으아아아~" 비명 + 바람 소리
+  // 뱀 소리 "쉬이이익~": 높은 잡음을 흔들며 길게
+  S.hiss = function (dur, vol) {
+    if (!ready()) return;
+    dur = dur || 1.2;
+    var t = ctx.currentTime;
+    var src = ctx.createBufferSource(), hp = ctx.createBiquadFilter(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = noiseBuf; src.loop = true;
+    hp.type = 'highpass'; hp.frequency.value = 3200;
+    bp.type = 'peaking'; bp.frequency.value = 6500; bp.gain.value = 10; bp.Q.value = 1.2;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol || 0.32, t + 0.08);
+    g.gain.setValueAtTime(vol || 0.32, t + dur * 0.75);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    var lfo = ctx.createOscillator(), lg = ctx.createGain();
+    lfo.frequency.value = 11; lg.gain.value = 0.12;
+    lfo.connect(lg); lg.connect(g.gain);
+    src.connect(hp); hp.connect(bp); bp.connect(g); g.connect(master);
+    src.start(t); src.stop(t + dur + 0.05);
+    lfo.start(t); lfo.stop(t + dur + 0.05);
+  };
+
+  // 뱀 꼬리 딸랑이 "따르르르"
+  function rattle(t, dur) {
+    for (var at = t; at < t + dur; at += 0.035) knock(at, 0.02, 4200 + Math.random() * 800, 0.14);
+  }
+
+  // 다운로드(뱀) 떨어지는 중: 뱀이 "쉬익!" → 미끄러져 내려가는 휘파람 + 계속 쉬이이 + 딸랑이 → 바닥에 쿵
   S.fall = function (dur) {
     if (!ready()) return;
     var t = ctx.currentTime;
-    var o = tone(t, dur, 1300, 120, 'triangle', 0.2);
+    S.hiss(0.9, 0.38);
+    rattle(t + 0.1, 0.7);
+    var o = tone(t + 0.6, dur - 0.6, 1100, 110, 'triangle', 0.2);
     var lfo = ctx.createOscillator(), lg = ctx.createGain();
-    lfo.frequency.value = 7; lg.gain.value = 35;
+    lfo.frequency.value = 6; lg.gain.value = 45;
     lfo.connect(lg); lg.connect(o.frequency);
-    lfo.start(t); lfo.stop(t + dur + 0.05);
-
-    // 목소리 같은 비명: 톱니파를 모음 소리처럼 걸러서 흔들며 내림
-    var v = ctx.createOscillator(), vf = ctx.createBiquadFilter(), vg = ctx.createGain();
-    v.type = 'sawtooth';
-    v.frequency.setValueAtTime(620, t);
-    v.frequency.exponentialRampToValueAtTime(170, t + dur);
-    vf.type = 'bandpass'; vf.frequency.value = 900; vf.Q.value = 4;
-    vg.gain.setValueAtTime(0.0001, t);
-    vg.gain.exponentialRampToValueAtTime(0.09, t + 0.2);
-    vg.gain.setValueAtTime(0.09, t + dur * 0.7);
-    vg.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    var vl = ctx.createOscillator(), vlg = ctx.createGain();
-    vl.frequency.value = 6; vlg.gain.value = 22;
-    vl.connect(vlg); vlg.connect(v.frequency);
-    v.connect(vf); vf.connect(vg); vg.connect(master);
-    v.start(t); v.stop(t + dur + 0.05);
-    vl.start(t); vl.stop(t + dur + 0.05);
-
-    // 바람: 잡음이 점점 커짐
-    var src = ctx.createBufferSource(), nf = ctx.createBiquadFilter(), ng = ctx.createGain();
-    src.buffer = noiseBuf; src.loop = true;
-    nf.type = 'bandpass'; nf.Q.value = 0.8;
-    nf.frequency.setValueAtTime(400, t);
-    nf.frequency.linearRampToValueAtTime(1600, t + dur);
-    ng.gain.setValueAtTime(0.0001, t);
-    ng.gain.exponentialRampToValueAtTime(0.12, t + dur * 0.9);
-    ng.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    src.connect(nf); nf.connect(ng); ng.connect(master);
-    src.start(t); src.stop(t + dur + 0.05);
-
-    // 바닥에 '쿵'
+    lfo.start(t + 0.6); lfo.stop(t + dur + 0.05);
+    // 내려가는 동안 뱀이 몇 번 더 쉬익
+    [0.35, 0.6, 0.82].forEach(function (k) {
+      setTimeout(function () { S.hiss(0.5, 0.2); }, dur * k * 1000);
+    });
     knock(t + dur - 0.02, 0.2, 150, 0.9);
     tone(t + dur - 0.02, 0.35, 110, 45, 'sine', 0.5);
   };
@@ -231,6 +243,15 @@
     notes.forEach(function (n) { brass(t + n[1], n[2], n[0], n[0], 0.14); });
     [523, 659, 784].forEach(function (f) { brass(t + 1.34, 0.9, f, f, 0.07); });
     knock(t + 1.34, 0.3, 5000, 0.25);   // 심벌
+  };
+
+  // 차례 알림: 띠-링!
+  S.turn = function () {
+    if (!ready()) return;
+    var t = ctx.currentTime;
+    tone(t, 0.18, 784, 784, 'triangle', 0.22);
+    tone(t + 0.12, 0.4, 1175, 1175, 'triangle', 0.22);
+    tone(t + 0.12, 0.4, 1568, 1568, 'sine', 0.08);
   };
 
   // 카드 등장: 딩동
