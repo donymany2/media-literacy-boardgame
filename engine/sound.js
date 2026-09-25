@@ -71,21 +71,54 @@
     src.start(t, Math.random() * 0.3); src.stop(t + dur + 0.02);
   }
 
-  // 주사위: 손 안에서 달그락 → 판 위에서 통통 튀다가 멈춤
+  // 주사위: 손 안에서 짧게 달그락 → 판 위를 "데굴데굴" 구르며 점점 느려짐 → 톡 멈춤
   S.dice = function (dur) {
     if (!ready()) return;
     dur = dur || 1;
     var t = ctx.currentTime;
-    // 손 안에서 달그락 (전체 시간의 40%)
-    var shake = dur * 0.4, n = Math.round(shake / 0.05);
-    for (var i = 0; i < n; i++) knock(t + i * shake / n + Math.random() * 0.02, 0.03, 2600 + Math.random() * 1400, 0.3);
-    // 판 위에서 통통 튀며 점점 짧아짐
-    var gaps = [0.47, 0.62, 0.74, 0.83, 0.9, 0.95, 0.985];
-    gaps.forEach(function (g, k) {
-      var v = 0.9 - k * 0.11;
-      knock(t + g * dur, 0.05, 1800 + Math.random() * 900, v);
-      tone(t + g * dur, 0.07, 190 - k * 12, 120, 'sine', 0.35 * v);
-    });
+    // 손 안에서 달그락 (전체 시간의 20%)
+    var shake = dur * 0.2, n = Math.max(4, Math.round(shake / 0.05));
+    for (var i = 0; i < n; i++) knock(t + i * shake / n + Math.random() * 0.015, 0.025, 2600 + Math.random() * 1200, 0.22);
+    // 데굴데굴: 나무판 위를 모서리로 구르는 낮은 "또각" 소리, 간격이 점점 벌어짐
+    var at = t + shake, gap = 0.055, k = 0;
+    var end = t + dur * 0.9;
+    while (at < end) {
+      var v = 0.55 - (at - t) / dur * 0.35;
+      knock(at, 0.04, 700 + Math.random() * 600, v);
+      tone(at, 0.05, k % 2 ? 210 : 170, 120, 'sine', 0.22 * v);
+      at += gap;
+      gap *= 1.09;
+      k++;
+    }
+    // 마지막 두 번 톡, 톡
+    knock(t + dur * 0.93, 0.05, 1500, 0.45);
+    knock(t + dur * 0.99, 0.06, 1200, 0.35);
+    tone(t + dur * 0.99, 0.09, 150, 100, 'sine', 0.3);
+  };
+
+  // 뒤로 미끄러지기: "쭈르륵~" 내려가는 짧은 미끄럼 소리
+  S.slip = function (dur) {
+    if (!ready()) return;
+    dur = Math.max(0.3, dur || 0.6);
+    var t = ctx.currentTime;
+    tone(t, dur, 700, 180, 'triangle', 0.18);
+    var src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = noiseBuf; src.loop = true;
+    f.type = 'bandpass'; f.Q.value = 1.5;
+    f.frequency.setValueAtTime(1800, t);
+    f.frequency.exponentialRampToValueAtTime(400, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(master);
+    src.start(t); src.stop(t + dur + 0.05);
+  };
+
+  // 점수 숫자가 하나씩 바뀔 때 "틱" (올라갈 때 높게, 내려갈 때 낮게)
+  S.tick = function (up, i) {
+    if (!ready()) return;
+    var f = up ? 880 + (i || 0) * 90 : 440 - (i || 0) * 40;
+    tone(ctx.currentTime, 0.07, f, f * (up ? 1.2 : 0.85), 'triangle', 0.14);
   };
 
   // 한 칸 이동: 칸마다 조금씩 높아지는 '뿅'
@@ -268,19 +301,31 @@
     tone(ctx.currentTime, 0.05, 1200, 900, 'square', 0.06);
   };
 
-  // 좋은 결과: 올라가는 화음
+  // 좋은 결과: 밝은 "딩-동-댕!" 화음과 반짝이
   S.good = function () {
     if (!ready()) return;
     var t = ctx.currentTime;
-    [523, 659, 784].forEach(function (f, i) { tone(t + i * 0.09, 0.28, f, f, 'triangle', 0.24); });
+    [659, 831, 988].forEach(function (f, i) { tone(t + i * 0.1, 0.3, f, f, 'triangle', 0.24); });
+    tone(t + 0.3, 0.5, 1319, 1319, 'sine', 0.12);
+    [2637, 3136, 3520].forEach(function (f, i) { tone(t + 0.34 + i * 0.05, 0.12, f, f, 'sine', 0.05); });
   };
 
-  // 아쉬운 결과: 와와~
+  // 아주 좋은 결과(정답 등): 밝은 화음 + 짧은 박수
+  S.great = function () {
+    if (!ready()) return;
+    S.good();
+    var t = ctx.currentTime;
+    [523, 659, 784, 1047].forEach(function (f) { tone(t + 0.45, 0.6, f, f, 'triangle', 0.07); });
+    for (var i = 0; i < 26; i++) knock(t + 0.4 + Math.random() * 0.8, 0.02, 1500 + Math.random() * 2000, 0.12);
+  };
+
+  // 아쉬운 결과: 부드럽게 내려가는 "띠로롱~" (놀리는 느낌이 아니도록 부드러운 소리)
   S.bad = function () {
     if (!ready()) return;
     var t = ctx.currentTime;
-    tone(t, 0.22, 392, 370, 'sawtooth', 0.09);
-    tone(t + 0.22, 0.45, 330, 262, 'sawtooth', 0.09);
+    tone(t, 0.25, 587, 587, 'triangle', 0.16);
+    tone(t + 0.18, 0.25, 523, 523, 'triangle', 0.16);
+    tone(t + 0.36, 0.55, 440, 415, 'triangle', 0.16);
   };
 
   // 도착: 빵빠레 + 환호

@@ -37,6 +37,7 @@
   var modal = null;             // 열린 카드 창 { kind, uid }
   var timers = [];
   var presence = {};
+  var lastScores = null;        // 점수판에서 바뀐 점수를 톡 튀게 하려고 직전 값을 기억
   var actionHandler = function () {};
   var observer = null;
   var reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -159,6 +160,7 @@
     modal = null;
     board = BG.buildBoard(pack, info.size, info.layout);
     displayPos = s.tokens.map(function (t) { return t.pos; });
+    lastScores = null;
     closeModal();
 
     var roleTag = '';
@@ -417,13 +419,20 @@
       '<span><b>' + (mine ? '우리 모둠' : esc(teamName(cur))) + '</b> 차례' + (mine ? '!' : '') + '</span>' +
       '<i class="twinkle t1">✦</i><i class="twinkle t2">✦</i><i class="twinkle t3">✦</i>';
     document.body.classList.toggle('my-turn', mine);
+    var prev = lastScores;
+    lastScores = snap.tokens.map(function (tk) { return { trust: tk.trust, judgment: tk.judgment }; });
+    var bump = function (i, key) {
+      if (!prev || !prev[i] || reduceMotion) return '';
+      var d = snap.tokens[i][key] - prev[i][key];
+      return d > 0 ? ' bump-up' : d < 0 ? ' bump-down' : '';
+    };
     $('#scores').innerHTML = snap.tokens.map(function (tk, i) {
       var online = ctx.role === 'host' ? (presence[i] ? ' online' : ' offline') : '';
       return '<div class="score-row' + (i === cur ? ' current' : '') + (tk.finished ? ' done' : '') + online + '" style="--tc:' + teamColor(i) + '">' +
         '<span class="dot" style="--c:' + teamColor(i) + '"></span>' +
         '<span class="who">' + esc(teamName(i)) + '<small>' + (tk.finished ? '도착' : tk.pos + '칸') + (ctx.role === 'host' ? (presence[i] ? ' · 연결됨' : ' · 연결 전') : '') + '</small></span>' +
-        '<span class="pt trust" title="' + esc(label('trust')) + ' (주 점수)">' + ICONS.trust + '<b>' + tk.trust + '</b></span>' +
-        '<span class="pt judgment" title="' + esc(label('judgment')) + ' (보조 점수)">' + ICONS.judgment + '<b>' + tk.judgment + '</b></span>' +
+        '<span class="pt trust' + bump(i, 'trust') + '" title="' + esc(label('trust')) + ' (주 점수)">' + ICONS.trust + '<b>' + tk.trust + '</b></span>' +
+        '<span class="pt judgment' + bump(i, 'judgment') + '" title="' + esc(label('judgment')) + ' (보조 점수)">' + ICONS.judgment + '<b>' + tk.judgment + '</b></span>' +
       '</div>';
     }).join('');
     placeTokens(false);
@@ -541,6 +550,7 @@
   async function animatePath(team, path) {
     var el = $('#tokens [data-token="' + team + '"]');
     var back = path.length && path[0] < displayPos[team];
+    if (back) return slideBack(team, path, el);
     var ms = reduceMotion ? 120 : speed().stepMs;
     if (el) el.style.setProperty('--hop', ms + 'ms');
     for (var i = 0; i < path.length; i++) {
@@ -553,6 +563,24 @@
     if (el) el.classList.remove('hop');
     if (path.length) { sound.land(); dust(path[path.length - 1]); }
     placeTokens(false);
+  }
+
+  // 카드 결과로 뒤로 갈 때: 통통 뛰지 않고 뒤로 "쭈르륵" 미끄러짐 + 화면 살짝 흔들림
+  async function slideBack(team, path, el) {
+    var ms = reduceMotion ? 80 : Math.max(220, speed().stepMs * 0.55);
+    if (el) { el.style.setProperty('--hop', ms + 'ms'); el.classList.add('slipping'); }
+    sound.slip(ms * path.length / 1000);
+    for (var i = 0; i < path.length; i++) {
+      displayPos[team] = path[i];
+      placeTokens(false);
+      await wait(ms);
+    }
+    if (el) el.classList.remove('slipping');
+    sound.land();
+    dust(path[path.length - 1]);
+    shake($('.screen.game'), 'shake-screen');
+    placeTokens(false);
+    await wait(reduceMotion ? 0 : 350);
   }
 
   async function animateJump(team, from, to) {
@@ -594,8 +622,7 @@
     } else {
       sound.sad();
       dust(to);
-      var b = $('#board');
-      if (b && !reduceMotion) { b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); }
+      shake($('.screen.game'), 'shake-screen');
     }
     await wait(reduceMotion ? 200 : 1100);
   }
@@ -676,16 +703,18 @@
     setTimeout(d.remove.bind(d), 500);
   }
 
-  function confetti(count) {
+  // short: 결과 카드용 짧은 색종이 (개수 적게, 빨리 끝남)
+  function confetti(count, short) {
+    if (reduceMotion) return;
     var root = document.createElement('div');
-    root.className = 'confetti';
+    root.className = 'confetti' + (short ? ' short' : '');
     var colors = cfg.theme.tokenColors;
     for (var i = 0; i < (count || 60); i++) {
       var p = document.createElement('i');
       p.style.left = Math.random() * 100 + 'vw';
       p.style.background = colors[i % colors.length];
-      p.style.animationDelay = Math.random() * 0.5 + 's';
-      p.style.animationDuration = 1.6 + Math.random() * 1.2 + 's';
+      p.style.animationDelay = Math.random() * (short ? 0.25 : 0.5) + 's';
+      p.style.animationDuration = (short ? 1.1 + Math.random() * 0.7 : 1.6 + Math.random() * 1.2) + 's';
       p.style.setProperty('--rot', (Math.random() * 720 - 360) + 'deg');
       root.appendChild(p);
     }
@@ -854,24 +883,99 @@
     m.querySelector('[data-no]').addEventListener('click', function () { disableAll(m); act('no'); });
   }
 
+  // 결과 창: 한 줄 코멘트 + 점수 카운트업(+2 배지) + 좋으면 색종이, 아쉬우면 흔들림
   function showOutcome(sc, fast) {
     var card = sc.card, out = sc.outcome;
     var isQuiz = card.type === 'quiz';
-    var good = isQuiz ? out.correct : isGood(out.effect);
+    var tone = sc.tone || (isQuiz ? (out.correct ? 'great' : 'bad') : (isGood(out.effect) ? 'good' : 'bad'));
+    var good = tone === 'great' || tone === 'good';
     var headline = isQuiz
-      ? (out.correct ? '<p class="verdict good">정답이에요!</p>' : '<p class="verdict bad">아쉬워요. 정답은 ' + esc(card.options[card.answer].label) + '. ' + esc(card.options[card.answer].text) + '</p>')
+      ? (out.correct ? '<p class="verdict good">정답이에요!</p>' : '<p class="verdict bad">정답은 ' + esc(card.options[card.answer].label) + '. ' + esc(card.options[card.answer].text) + '</p>')
       : chosenLine(card, sc.selected);
     var mine = canAct(sc);
     var m = openModal(cardHead(card, sc.team) +
-      '<div class="result-box ' + (good ? 'is-good' : 'is-bad') + '">' + headline +
+      '<div class="result-box tone-' + tone + '">' +
+      (sc.comment ? '<p class="comment">' + esc(sc.comment) + '</p>' : '') +
+      headline +
       (out.feedback ? '<p>' + esc(out.feedback) + '</p>' : '') +
-      '<div class="chips">' + effectChips(out.effect) +
-      (sc.bonus ? '<span class="chip bonus">이유 말하기 ' + esc(BG.describeEffect(sc.bonus, meta.scoreLabels).map(function (e) { return e.text; }).join(' ')) + '</span>' : '') +
-      '</div></div>' + watchNote(sc, '결과를 확인하고') +
-      (mine ? '<button class="btn big primary wide" data-ok>확인</button>' : '') + '</div>', 'card k-' + card.type + ' result', { kind: 'outcome', uid: sc.uid });
-    if (!fast) { if (good) sound.good(); else sound.bad(); }
+      scoreDeltas(sc) +
+      '</div>' + watchNote(sc, '결과를 확인하고') +
+      (mine ? '<button class="btn big primary wide" data-ok>확인</button>' : '') + '</div>', 'card k-' + card.type + ' result tone-' + tone, { kind: 'outcome', uid: sc.uid });
     var ok = m.querySelector('[data-ok]');
     if (ok) ok.addEventListener('click', function () { ok.disabled = true; act('ok'); });
+
+    if (fast) { finishCounts(m); return; }
+    if (tone === 'great') { sound.great(); confetti(46, true); }
+    else if (good) { sound.good(); sparkleCard(m); }
+    else { sound.bad(); if (tone === 'bad') setTimeout(function () { shake(m, 'shake-card'); }, 380); }
+    runCounts(m);
+  }
+
+  // 점수 줄: 이유 말하기 보너스까지 포함한 전·후 값. (예전 형식이면 배지만)
+  function scoreDeltas(sc) {
+    var out = sc.outcome;
+    if (!sc.before || !sc.after) {
+      return '<div class="chips">' + effectChips(out.effect) + '</div>';
+    }
+    var rows = ['trust', 'judgment'].map(function (key) {
+      var from = sc.before[key], to = sc.after[key], d = to - from;
+      var cls = d > 0 ? 'up' : d < 0 ? 'down' : 'same';
+      return '<div class="delta ' + key + ' ' + cls + '">' + ICONS[key] +
+        '<span class="delta-name">' + esc(label(key)) + '</span>' +
+        '<b class="count" data-from="' + from + '" data-to="' + to + '">' + from + '</b>' +
+        (d ? '<span class="delta-badge">' + (d > 0 ? '+' : '') + d + '</span>' : '') + '</div>';
+    }).join('');
+    var mv = (out.effect && out.effect.move) || 0;
+    var moveText = mv > 0 ? mv + '칸 앞으로' : mv < 0 ? (-mv) + '칸 뒤로' : '제자리';
+    rows += '<div class="delta move ' + (mv > 0 ? 'up' : mv < 0 ? 'down' : 'same') + '"><span class="move-arrow">' + (mv > 0 ? '▲' : mv < 0 ? '▼' : '●') + '</span><span class="delta-name">' + moveText + '</span></div>';
+    return '<div class="deltas">' + rows + '</div>' +
+      (sc.bonus ? '<div class="chips"><span class="chip bonus">이유 말하기 ' + esc(BG.describeEffect(sc.bonus, meta.scoreLabels).map(function (e) { return e.text; }).join(' ')) + ' 포함</span></div>' : '');
+  }
+
+  // 숫자가 한 칸씩 올라가거나 내려가며 톡톡 튐 (가벼운 setTimeout + CSS만 사용)
+  function runCounts(m) {
+    var delay = reduceMotion ? 0 : 450;
+    m.querySelectorAll('.count').forEach(function (el, idx) {
+      var from = +el.dataset.from, to = +el.dataset.to;
+      if (from === to || reduceMotion) { el.textContent = to; return; }
+      var dir = to > from ? 1 : -1, v = from, i = 0;
+      var badge = el.parentNode.querySelector('.delta-badge');
+      setTimeout(function step() {
+        if (!el.isConnected) return;
+        v += dir;
+        el.textContent = v;
+        el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+        sound.tick(dir > 0, i++);
+        if (v !== to) setTimeout(step, 170);
+        else if (badge) badge.classList.add('show');
+      }, delay + idx * 260);
+    });
+  }
+
+  function finishCounts(m) {
+    m.querySelectorAll('.count').forEach(function (el) { el.textContent = el.dataset.to; });
+    m.querySelectorAll('.delta-badge').forEach(function (b) { b.classList.add('show'); });
+  }
+
+  function sparkleCard(m) {
+    if (reduceMotion) return;
+    var box = m.querySelector('.result-box');
+    if (!box) return;
+    for (var i = 0; i < 8; i++) {
+      var s = document.createElement('i');
+      s.className = 'spark';
+      s.style.left = (10 + Math.random() * 80) + '%';
+      s.style.top = (10 + Math.random() * 60) + '%';
+      s.style.animationDelay = (i * 60) + 'ms';
+      box.appendChild(s);
+    }
+  }
+
+  // 흔들림: 창 하나(shake-card) 또는 게임 화면 전체(shake-screen)
+  function shake(el, cls) {
+    if (!el || reduceMotion) return;
+    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+    setTimeout(function () { el.classList.remove(cls); }, 600);
   }
 
   function disableAll(m) { m.querySelectorAll('button').forEach(function (b) { b.disabled = true; }); }

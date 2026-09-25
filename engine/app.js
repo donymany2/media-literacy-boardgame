@@ -384,13 +384,46 @@
       reasoned = r2.action === 'yes';
     }
     var out = game.outcomeOf(card, selected);
+    var tk = game.tokens[idx];
+    var before = { trust: tk.trust, judgment: tk.judgment };
     var res = game.resolveCard(card, selected, { reasoned: reasoned });
+    var tone = toneOf(card, out);
     await this.ask({
       kind: 'outcome', team: idx, card: card, selected: selected, uid: uid + 'o',
       outcome: { effect: out.effect, feedback: out.feedback, correct: out.correct },
-      bonus: reasoned ? game.reasonBonus() : null
+      bonus: reasoned ? game.reasonBonus() : null,
+      // 모든 화면이 같은 연출·코멘트를 보이도록 선생님 화면(또는 혼자 하기 기기)이 정해서 보냄
+      before: before,
+      after: { trust: tk.trust, judgment: tk.judgment },
+      tone: tone,
+      comment: this.pickComment(tone === 'great' || tone === 'good' ? 'good' : 'bad')
     }, ['ok']);
     return res;
+  };
+
+  // 결과의 분위기: great(정답·아주 좋은 선택) / good / soso(점수 변화 없음) / bad(신뢰를 잃음)
+  function toneOf(card, out) {
+    if (card.type === 'quiz') return out.correct ? 'great' : 'bad';
+    var e = out.effect || {};
+    var gain = (e.trust || 0) + (e.judgment || 0);
+    if ((e.trust || 0) < 0) return 'bad';
+    if (gain >= 3) return 'great';
+    if (gain > 0) return 'good';
+    return 'soso';
+  }
+
+  // 코멘트는 바로 전에 나온 것과 겹치지 않게 무작위로
+  Director.prototype.pickComment = function (kind) {
+    var pool = (meta.comments && meta.comments[kind]) || [];
+    if (!pool.length) return '';
+    this.lastComment = this.lastComment || {};
+    var pick;
+    for (var i = 0; i < 5; i++) {
+      pick = pool[Math.floor(Math.random() * pool.length)];
+      if (pick !== this.lastComment[kind] || pool.length === 1) break;
+    }
+    this.lastComment[kind] = pick;
+    return pick;
   };
 
   Director.prototype.teacherFlow = async function (idx) {
