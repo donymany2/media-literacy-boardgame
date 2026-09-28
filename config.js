@@ -4,25 +4,25 @@
  *
  * 링크 뒤에 붙이는 값으로도 일부 설정을 바꿀 수 있습니다.
  *   index.html?mode=short          압축 모드로 시작 화면 열기
- *   index.html?pack=media-literacy 카드팩 지정
+ *   index.html?pack=media-literacy 카드팩 지정 (기본: ai-ethics, 미디어 리터러시판은 media-literacy)
  *   index.html?tokens=2            말 개수 지정
  */
 window.GAME_CONFIG = {
   // 제목·로고
   title: '업다운 로드',
-  subtitle: '올라갈까, 미끄러질까? 선택이 길을 바꾸는 디지털 보드게임',
+  subtitle: 'AI 디지털 윤리',
   logo: 'assets/logo.svg',          // 이미지 경로. 비우면('') 로고를 표시하지 않음
   credit: 'created by 윤준철',       // 첫 화면 오른쪽 아래에 작게 표시. 비우면 숨김
 
   // 사용할 카드팩 (packs/ 아래 폴더 이름)
-  pack: 'media-literacy',
+  pack: 'ai-ethics',
 
   // 판 크기 모드. size는 칸 수 — 카드팩에 해당 칸 수 배치가 없으면 자동 생성됨
   modes: [
     { id: 'standard', label: '표준', size: 40 },
     { id: 'short',    label: '압축', size: 25 }
   ],
-  defaultMode: 'standard',
+  defaultMode: 'short',              // 수업 1차시 전개 30분에 맞춰 압축(25칸)을 기본으로
 
   // 모둠 수 = 한 화면에서 번갈아 움직이는 말 개수 (1모둠, 2모둠 ... 으로 표시)
   // 시뮬레이션(tests/simulate.js) 기준 40칸: 말 1개 약 10분, 2개 약 21분, 3개 약 31분
