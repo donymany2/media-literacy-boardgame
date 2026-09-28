@@ -426,11 +426,13 @@
 
     function variant(c) {
       var out = { text: fill(c.text), effect: c.effect || {}, feedback: fill(c.feedback || '') };
+      if (c.style) out.style = c.style;
       Object.keys(c.by || {}).forEach(function (slot) {
         var o = c.by[slot][picked[slot]];
         if (o) {
           if (o.effect) out.effect = o.effect;
           if (o.feedback) out.feedback = fill(o.feedback);
+          if (o.style) out.style = o.style;
         }
       });
       return out;
@@ -476,6 +478,44 @@
       x.rank = prev && prev.score === x.score && prev.pos === x.pos ? prev.rank : k + 1;
     });
     return list;
+  };
+
+  /* ---------- 선택 경향 ----------
+   * 딜레마에서 고른 선택지가 어떤 기준에 가까운지. 카드팩 meta.styles가 있을 때 결과 화면에 모둠별로 보여 줌
+   *   quick  편리·재미 먼저: 신뢰를 얻지 못하는 대신 빠르거나 편한 선택
+   *   check  확인 먼저    : 판단력이 신뢰보다 크게 오르는 선택(사실 확인, 규칙 따지기)
+   *   care   사람 먼저    : 신뢰가 판단력만큼 이상 오르는 선택(상대의 마음, 약속, 정직)
+   * 선택지에 style: 'care'처럼 직접 적으면 그 값을 씀
+   */
+  BG.choiceStyle = function (choice, effect) {
+    if (choice && choice.style) return choice.style;
+    effect = effect || (choice && choice.effect) || {};
+    var t = effect.trust || 0, j = effect.judgment || 0;
+    if (t <= 0 && (j <= 0 || (effect.move || 0) > 0)) return 'quick';
+    return j > t ? 'check' : 'care';
+  };
+
+  // 기록(log)에서 모둠별 경향 집계 → [{ counts: { care: 2, ... }, total, main: 'care' | 'mixed' | null }]
+  BG.styleSummary = function (log, teams, styleIds) {
+    var out = [];
+    for (var i = 0; i < teams; i++) {
+      var counts = {};
+      styleIds.forEach(function (s) { counts[s] = 0; });
+      out.push({ counts: counts, total: 0, main: null });
+    }
+    (log || []).forEach(function (e) {
+      if (e.kind !== 'card' || e.cardType !== 'dilemma' || !e.style || !out[e.token]) return;
+      if (!(e.style in out[e.token].counts)) return;
+      out[e.token].counts[e.style]++;
+      out[e.token].total++;
+    });
+    out.forEach(function (r) {
+      if (!r.total) return;
+      var best = Math.max.apply(null, styleIds.map(function (s) { return r.counts[s]; }));
+      var tops = styleIds.filter(function (s) { return r.counts[s] === best; });
+      r.main = tops.length === 1 ? tops[0] : 'mixed';
+    });
+    return out;
   };
 
   /* ---------- 효과 문구 ---------- */

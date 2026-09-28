@@ -103,6 +103,7 @@
           effect: { trust: 1, judgment: 2, move: 0 },
           feedback: '믿을 만한 곳에서 다시 확인하는 것이 가장 확실해요. 시간은 조금 더 걸려요.' },
         { text: 'AI에게 "정말이야? 출처 알려 줘"라고 다시 묻는다',
+          style: 'check',
           effect: { trust: 1, judgment: 1, move: 1 },
           feedback: '좋은 질문이에요. 하지만 AI는 없는 출처도 만들어 낼 수 있어서, 출처를 직접 열어 봐야 해요.' }
       ]
@@ -136,6 +137,7 @@
           effect: { trust: 1, judgment: 2, move: 0 },
           feedback: 'AI를 "지도"처럼 쓰고 직접 길을 걸어 본 셈이에요. AI를 똑똑하게 쓰는 방법이에요.' },
         { text: '요약은 보지 않고 책만 꼼꼼히 읽는다',
+          style: 'check',
           effect: { trust: 1, judgment: 1, move: 0 },
           feedback: '스스로 읽는 힘은 훌륭해요. AI를 확인용으로 잘 활용하는 방법도 함께 익혀 보면 좋아요.' }
       ]
@@ -238,6 +240,7 @@
           effect: { trust: 1, judgment: 2, move: 0 },
           feedback: 'AI를 "선생님 대신"이 아니라 "힌트"로 쓴 좋은 방법이에요.' },
         { text: '앱을 쓰지 않고 혼자 끝까지 푼다',
+          style: 'check',
           effect: { trust: 1, judgment: 1, move: -1 },
           feedback: '끈기는 훌륭해요. 하지만 너무 오래 막혀 있을 때는 도움을 받는 것도 배움이에요.' }
       ]
@@ -278,6 +281,7 @@
           effect: { trust: 1, judgment: 2, move: 0 },
           feedback: '어른과 함께 약관을 확인하는 건 아주 좋은 습관이에요. 시간은 조금 걸려요.' },
         { text: '내 사진 대신 캐릭터 그림으로 만들어 본다',
+          style: 'check',
           effect: { trust: 1, judgment: 1, move: 1 },
           feedback: '얼굴을 지키면서 즐긴 방법이에요. 앱이 다른 정보를 모으는지도 함께 살펴보면 더 좋아요.' }
       ]
@@ -344,6 +348,7 @@
           effect: { trust: 1, judgment: 2, move: 0 },
           feedback: '여러 관점을 스스로 찾는 힘이에요. 생각의 균형을 잡는 좋은 습관이에요.' },
         { text: '시청 기록을 지우고 추천을 새로 시작한다',
+          style: 'check',
           effect: { trust: 1, judgment: 1, move: 1 },
           feedback: '추천의 틀을 깨는 방법이에요. 하지만 금세 비슷한 추천이 다시 쌓일 수 있어요.' }
       ]

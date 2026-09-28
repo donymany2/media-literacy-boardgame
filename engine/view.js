@@ -189,6 +189,7 @@
           '<span class="game-title">' + esc(cfg.title) + '</span>' +
           '<span class="mode-tag">' + esc(info.modeLabel) + ' ' + info.size + '칸' + (info.randomBoard ? ' · 새 판' : '') + '</span>' +
           roleTag +
+          (info.deadline ? '<span class="clock" id="clock" aria-live="off"></span>' : '') +
           '<span class="spacer"></span>' +
           V.soundButton() +
           (ctx.role !== 'team' ? '<button class="btn small ghost" id="stop-btn">끝내기</button>' : '') +
@@ -218,7 +219,27 @@
     var stop = $('#stop-btn');
     if (stop) stop.addEventListener('click', confirmStop);
     renderPanel();
+    startClock();
   };
+
+  /* ---------- 게임 시간 ---------- */
+  var clockHandle = null;
+  function startClock() {
+    clearInterval(clockHandle);
+    clockHandle = null;
+    if (!info || !info.deadline) return;
+    var tick = function () {
+      var el = $('#clock');
+      if (!el || !info) { clearInterval(clockHandle); return; }
+      var left = Math.max(0, Math.ceil((info.deadline - Date.now()) / 1000));
+      var m = Math.floor(left / 60), sec = left % 60;
+      el.textContent = left > 0 ? '남은 시간 ' + m + ':' + (sec < 10 ? '0' : '') + sec : '마지막 바퀴';
+      el.classList.toggle('warn', left > 0 && left <= 180);
+      el.classList.toggle('over', left === 0);
+    };
+    tick();
+    clockHandle = setInterval(tick, 1000);
+  }
 
   function confirmStop() {
     var root = $('#confirm-root');
@@ -625,6 +646,13 @@
       burst(info.size, cfg.theme.accent);
       toast(teamName(sc.team) + ' 도착!', 'up');
       return wait(reduceMotion ? 400 : 3200);
+    },
+    timeup: function (sc, fast) {
+      closeModal();
+      if (fast) return;
+      sound.bad();
+      toast(sc.last ? '시간 끝! 이번 바퀴까지만 해요' : '시간 끝! 결과를 볼까요?', 'down');
+      return wait(reduceMotion ? 400 : 2200);
     },
     result: function (sc) { V.showResult(sc.summary); }
   };
@@ -1153,7 +1181,33 @@
 
   /* ================= 결과 ================= */
 
+  // 모둠별 선택 경향 (카드팩 meta.styles가 있을 때) — 2차시 "우리 모둠은 어떤 기준으로 골랐나" 되짚기용
+  function stylePanel(sum, nameOf) {
+    var defs = meta.styles;
+    if (!defs || !sum.styles) return '';
+    var ids = Object.keys(defs);
+    var rows = sum.styles.map(function (r, i) {
+      var bar = r.total ? ids.map(function (k) {
+        return r.counts[k] ? '<span class="seg" style="--sc:' + esc(defs[k].color) + ';flex:' + r.counts[k] + '" title="' + esc(defs[k].name) + ' ' + r.counts[k] + '">' + r.counts[k] + '</span>' : '';
+      }).join('') : '<span class="seg empty">딜레마를 만나지 않았어요</span>';
+      var main = r.main === 'mixed' ? (meta.stylesMixed || { name: '골고루', desc: '여러 기준을 비슷하게 골랐어요.' }) : defs[r.main];
+      return '<div class="style-row" style="--tc:' + teamColor(i) + '">' +
+        '<div class="style-name"><span class="dot" style="--c:' + teamColor(i) + '"></span><b>' + esc(nameOf(i)) + '</b>' +
+          (main ? '<span class="style-main" style="--sc:' + esc(main.color || '#1B1A2E') + '">주로 ' + esc(main.name) + '</span>' : '') + '</div>' +
+        '<div class="style-bar">' + bar + '</div>' +
+        (main ? '<p class="style-desc">' + esc(main.desc) + '</p>' : '') +
+      '</div>';
+    }).join('');
+    var legend = ids.map(function (k) {
+      return '<span class="legend-item"><i style="--sc:' + esc(defs[k].color) + '"></i><b>' + esc(defs[k].name) + '</b> ' + esc(defs[k].hint || '') + '</span>';
+    }).join('');
+    return '<div class="panel styles-panel"><h2>' + esc(meta.stylesTitle || '우리 모둠의 선택 기준') + '</h2>' +
+      '<p class="hint">딜레마에서 고른 선택지를 기준별로 모았어요. 정답이 아니라 우리 모둠이 무엇을 먼저 생각했는지 보여 줘요.</p>' +
+      '<div class="style-legend">' + legend + '</div>' + rows + '</div>';
+  }
+
   V.showResult = function (sum) {
+    clearInterval(clockHandle);
     closeModal();
     document.body.classList.remove('my-turn');
     $('#toast-root').innerHTML = '';
@@ -1212,8 +1266,9 @@
     $('#app').innerHTML =
       '<section class="screen result">' +
         '<h1 class="wordmark small">' + V.wordmark(cfg.title) + '</h1>' +
-        '<p class="result-sub">한 판 끝! ' + (n > 1 ? '모든 모둠의' : '우리 모둠의') + ' 길을 돌아봐요.</p>' +
+        '<p class="result-sub">' + (sum.timeUp ? '게임 시간 끝! ' : '한 판 끝! ') + (n > 1 ? '모든 모둠의' : '우리 모둠의') + ' 길을 돌아봐요.</p>' +
         '<div class="result-tokens">' + tokenCards + '</div>' +
+        stylePanel(sum, nameOf) +
         '<div class="panel"><h2>이번 판에서 만난 주제</h2><div class="chips wrap">' + topicList + '</div></div>' +
         (logItems ? '<div class="panel"><h2>우리가 고른 선택</h2><ol class="log">' + logItems + '</ol></div>' : '') +
         (debrief ? '<div class="panel"><h2>함께 이야기해요</h2><ol class="debrief">' + debrief + '</ol></div>' : '') +

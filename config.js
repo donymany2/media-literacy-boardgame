@@ -44,6 +44,11 @@ window.GAME_CONFIG = {
   // 딜레마 카드 토의 시간(초). 0이면 타이머 숨김. 시간이 지나도 강제로 넘어가지 않음
   discussionSeconds: 60,
 
+  // 게임 시간(분) — 시작 화면에서 고름. 0은 제한 없음(모두 도착할 때까지)
+  // 시간이 다 되면 모든 모둠이 같은 횟수만큼 하도록 이번 바퀴까지 하고 결과 화면으로
+  timeLimits: [0, 20, 30, 40],
+  defaultTimeLimit: 30,            // 수업안 1차시 전개 30분
+
   // 말 속도 — 시작 화면에서 고름. stepMs 한 칸 이동, upMs 업로드 오르기, downMs 다운로드 떨어지기, diceMs 주사위 굴리기 (1000 = 1초)
   speeds: {
     fast:   { label: '빠르게', stepMs: 450,  upMs: 2500, downMs: 2300, diceMs: 900 },

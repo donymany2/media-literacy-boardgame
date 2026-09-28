@@ -9,7 +9,7 @@
 BG.registerPack('ai-ethics', 'meta', {
   name: 'AI 디지털 윤리',
   description: '딥페이크·합성, AI 정보 판단, 저작권·창작, AI와 과제, 사생활, 편향·공정, 책임·공존',
-  version: '0.1',
+  version: '0.2',
 
   // 주제 목록 — 카드의 topic 값과 이름·색을 연결
   topics: {
@@ -50,7 +50,7 @@ BG.registerPack('ai-ethics', 'meta', {
   scoring: { trustStart: 10, judgmentStart: 0, min: 0 },
 
   // 이 카드팩을 이루는 파일 (pack.js 다음에 차례로 읽음)
-  files: ['art.js', 'cards.js', 'board.js'],
+  files: ['art.js', 'cards.js', 'cards-2.js', 'cards-3.js', 'board.js'],
 
   // 칸 그림 — 'svg:이름'은 art.js에 직접 그린 그림
   tileArt: {
@@ -135,6 +135,19 @@ BG.registerPack('ai-ethics', 'meta', {
       { label: '다음에 다시',   effect: {} }
     ]
   },
+
+  // 선택 경향 — 결과 화면에 모둠별로 "주로 어떤 기준으로 골랐는지" 보여 줌 (2차시 도입 활동용)
+  // 선택지마다 효과로 자동 분류(엔진 BG.choiceStyle). 선택지에 style: 'care'처럼 적으면 직접 지정
+  stylesTitle: '우리 모둠의 선택 기준',
+  styles: {
+    care:  { name: '사람 먼저', color: '#E8412F', hint: '상대의 마음·약속·정직',
+             desc: '다른 사람의 마음과 믿음을 먼저 생각하는 선택을 많이 했어요.' },
+    check: { name: '확인 먼저', color: '#2F6BFF', hint: '사실 확인·규칙 따지기',
+             desc: '진짜인지, 규칙에 맞는지 먼저 따져 보는 선택을 많이 했어요.' },
+    quick: { name: '편리·재미 먼저', color: '#FF9F1C', hint: '빠르고 쉬운 길',
+             desc: '빠르고 편하거나 재미있는 선택을 많이 했어요. 그 선택이 누군가에게 어떤 영향을 줬을지 이야기해 봐요.' }
+  },
+  stylesMixed: { name: '골고루', color: '#0E9F6E', desc: '여러 기준을 비슷하게 골랐어요. 어떤 때 기준이 바뀌었는지 이야기해 봐요.' },
 
   // 결과 화면 칭호 — 조건(when)을 만족하는 칭호를 모두 보여줌
   // when의 값은 [최소, 최대]. null은 제한 없음

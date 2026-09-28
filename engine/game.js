@@ -60,7 +60,7 @@
   Game.prototype.toJSON = function () {
     return {
       size: this.size, endWhen: this.endWhen, dieFaces: this.dieFaces, layout: this.layout,
-      tokens: this.tokens, current: this.current, finishCount: this.finishCount, over: this.over, log: this.log
+      tokens: this.tokens, current: this.current, finishCount: this.finishCount, over: this.over, log: this.log, timeUp: !!this.timeUp
     };
   };
 
@@ -73,6 +73,7 @@
     g.finishCount = data.finishCount || 0;
     g.over = !!data.over;
     g.log = data.log || [];
+    g.timeUp = !!data.timeUp;
     return g;
   };
 
@@ -201,7 +202,8 @@
       choice: outcome.choice ? outcome.choice.text : null,
       correct: outcome.correct,
       reasoned: !!bonus,
-      effect: outcome.effect
+      effect: outcome.effect,
+      style: card.type === 'dilemma' ? BG.choiceStyle(outcome.choice, outcome.effect) : undefined
     });
     outcome.move = move;
     return outcome;
@@ -288,7 +290,9 @@
         awards: awards.filter(function (a) { return matches(a.when, stats); })
       };
     });
-    return { tokens: tokens, log: this.log, size: this.size };
+    var styleIds = Object.keys(this.pack.meta.styles || {});
+    var styles = styleIds.length ? BG.styleSummary(this.log, this.tokens.length, styleIds) : null;
+    return { tokens: tokens, log: this.log, size: this.size, styles: styles, timeUp: !!this.timeUp };
   };
 
   // when = { trust: [최소, 최대], rolls: [null, 최대], ... } 조건을 모두 만족하면 true

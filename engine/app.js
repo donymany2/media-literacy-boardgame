@@ -40,7 +40,8 @@
     var mode = find(cfg.modes, params.get('mode')) || find(cfg.modes, cfg.defaultMode) || cfg.modes[0];
     var tokens = parseInt(params.get('tokens'), 10);
     if (!(tokens >= 1 && tokens <= cfg.maxTokens)) tokens = cfg.defaultTokens;
-    settings = { mode: mode, tokens: tokens, randomBoard: cfg.randomBoard !== false, speed: cfg.defaultSpeed || 'normal' };
+    settings = { mode: mode, tokens: tokens, randomBoard: cfg.randomBoard !== false, speed: cfg.defaultSpeed || 'normal',
+      timeLimit: cfg.defaultTimeLimit || 0 };
 
     var room = (params.get('room') || '').replace(/\D/g, '');
     if (room) joinScreen(room);
@@ -122,6 +123,9 @@
     var speeds = cfg.speeds || {};
     var speedList = Object.keys(speeds).map(function (k) { return { id: k, label: speeds[k].label || k }; });
     var saved = readHostSave();
+    var limits = (cfg.timeLimits || []).map(function (m) {
+      return m ? { id: String(m), label: m + '분', sub: '마지막 바퀴까지' } : { id: '0', label: '제한 없음', sub: '모두 도착까지' };
+    });
 
     $('#app').innerHTML =
       '<section class="screen setup">' +
@@ -140,6 +144,7 @@
               optButtons([{ id: 'random', label: '매번 새 판', sub: '길이 매번 바뀜' }, { id: 'fixed', label: '고정 판', sub: '늘 같은 길' }], settings.randomBoard ? 'random' : 'fixed', 'data-board') + '</div></div>' +
             '<div class="field"><h2>모둠 수</h2><div class="opts tokens-opts" id="token-opts">' + tokenButtons + '</div></div>' +
             (speedList.length ? '<div class="field"><h2>말 속도</h2><div class="opts" id="speed-opts">' + optButtons(speedList, settings.speed, 'data-speed') + '</div></div>' : '') +
+            (limits.length ? '<div class="field"><h2>게임 시간</h2><div class="opts" id="time-opts">' + optButtons(limits, String(settings.timeLimit), 'data-time') + '</div></div>' : '') +
           '</div>' +
           '<div class="start-buttons">' +
             '<button class="btn big primary start" id="start-btn">기기 하나로 시작</button>' +
@@ -154,6 +159,7 @@
     bindOpts('#board-opts', 'data-board', function (v) { settings.randomBoard = v === 'random'; });
     bindOpts('#token-opts', 'data-tokens', function (v) { settings.tokens = +v; });
     bindOpts('#speed-opts', 'data-speed', function (v) { settings.speed = v; });
+    bindOpts('#time-opts', 'data-time', function (v) { settings.timeLimit = +v; });
     $('#start-btn').addEventListener('click', function () { sound.unlock(); startSolo(); });
     $('#host-btn').addEventListener('click', function () { sound.unlock(); createRoom(); });
     $('#join-link').addEventListener('click', function () { joinScreen(''); });
@@ -201,6 +207,9 @@
       randomBoard: settings.randomBoard,
       speedId: settings.speed,
       modeId: settings.mode.id,
+      // 게임 시간 제한: 끝나는 시각(이 시각이 지나면 이번 바퀴까지 하고 결과)
+      timeLimit: settings.timeLimit || 0,
+      deadline: settings.timeLimit ? Date.now() + settings.timeLimit * 60000 : 0,
       rankBy: (cfg.classroom || {}).rankBy || 'score'
     };
   }
@@ -255,7 +264,7 @@
     if (this.conn) this.conn.publishState(st);
     if (this.role === 'host') {
       try {
-        localStorage.setItem(HOST_KEY, JSON.stringify({ room: this.room, info: this.info, game: this.game.toJSON(), seq: this.seq, savedAt: Date.now(), settings: { mode: settings.mode.id, speed: settings.speed, randomBoard: settings.randomBoard, tokens: settings.tokens } }));
+        localStorage.setItem(HOST_KEY, JSON.stringify({ room: this.room, info: this.info, game: this.game.toJSON(), seq: this.seq, savedAt: Date.now(), settings: { mode: settings.mode.id, speed: settings.speed, randomBoard: settings.randomBoard, tokens: settings.tokens, timeLimit: settings.timeLimit } }));
       } catch (e) { /* 저장 못 해도 진행 */ }
     }
     if (this.onSeq) this.onSeq(this.seq);
@@ -302,7 +311,11 @@
   Director.prototype.run = async function () {
     var game = this.game;
     try {
-      while (!game.over) await this.turn();
+      while (!game.over) {
+        var idx = game.current;
+        await this.turn();
+        if (!game.over && this.info.deadline && Date.now() >= this.info.deadline) await this.timeCheck(idx);
+      }
     } catch (e) {
       if (e !== STOP) throw e;
       game.stop();
@@ -310,6 +323,17 @@
     this.done = true;
     await this.show({ kind: 'result', summary: game.summary() });
     if (this.role === 'host') clearHostSave();
+  };
+
+  // 시간이 다 되면 모든 모둠이 같은 횟수만큼 하도록 이번 바퀴(차례 순서의 끝)까지만 하고 끝냄
+  Director.prototype.timeCheck = async function (justPlayed) {
+    var game = this.game;
+    var roundDone = game.current <= justPlayed;   // 다음 차례가 앞 번호로 돌아가면 한 바퀴 끝
+    if (!game.timeUp) {
+      game.timeUp = true;
+      await this.show({ kind: 'timeup', last: !roundDone });
+    }
+    if (roundDone) game.stop();
   };
 
   Director.prototype.turn = async function () {
@@ -577,7 +601,7 @@
               '<button class="btn small" id="copy-url">주소 복사</button>' +
             '</div>' +
           '</div>' +
-          '<h2>모둠 연결 <small>' + settings.tokens + '모둠 · ' + esc(settings.mode.label) + ' ' + settings.mode.size + '칸 · ' + (settings.randomBoard ? '매번 새 판' : '고정 판') + '</small></h2>' +
+          '<h2>모둠 연결 <small>' + settings.tokens + '모둠 · ' + esc(settings.mode.label) + ' ' + settings.mode.size + '칸 · ' + (settings.randomBoard ? '매번 새 판' : '고정 판') + (settings.timeLimit ? ' · ' + settings.timeLimit + '분' : '') + '</small></h2>' +
           '<div class="lobby-teams" id="lobby-teams"></div>' +
           '<div class="btn-row center">' +
             '<button class="btn big primary" id="host-start">게임 시작</button>' +
@@ -675,6 +699,7 @@
       settings.speed = s.speed || settings.speed;
       settings.randomBoard = !!s.randomBoard;
       settings.tokens = saved.game.tokens.length;
+      settings.timeLimit = s.timeLimit || 0;
       startHost(c, saved.room, saved.seq || 0);
       var game = BG.Game.restore(pack, saved.game, { cardMemory: cardMemory() });
       startHostGame({ game: game, info: saved.info });
