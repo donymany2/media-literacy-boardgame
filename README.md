@@ -2,6 +2,8 @@
 
 초등 5~6학년 AI 디지털 윤리 수업용 보드게임입니다(2026 디지털윤리 창작콘텐츠 공모전 수업안 「업다운로드, AI 시대의 윤리 판단 게임」, 도덕·실과 2차시).
 같은 엔진으로 만든 디지털 미디어 리터러시판도 함께 들어 있습니다(주소 뒤에 `?pack=media-literacy`).
+
+바로 하기: https://donymany2.github.io/ai-ethics-boardgame/
 전통 뱀사다리놀이를 디지털 세계로 옮겼습니다. 지름길은 사다리를 타고 오르는 "업로드", 미끄럼틀은 뱀을 타고 떨어지는 "다운로드"이고, 도착하는 칸마다 딜레마·돌발 퀴즈·돌발 상황이 나옵니다.
 
 - AI 디지털 윤리 카드 150장: 딜레마 80(3지선다, 정답 없음, 선택지 순서 섞기, 누가·어디서가 바뀌는 카드 21장), 돌발 퀴즈 40, 돌발 상황 30
@@ -34,8 +36,8 @@
 GitHub Pages는 공개 저장소에서 무료입니다(비공개 저장소는 유료 요금제 필요).
 1. 저장소 Settings → General → 맨 아래 Danger Zone → Change visibility → Public
 2. Settings → Pages → Build and deployment → Source: "Deploy from a branch"
-3. Branch: 이 작업 브랜치(또는 main에 합친 뒤 main), 폴더 `/ (root)` → Save
-4. 1~2분 뒤 `https://donymany2.github.io/media-literacy-boardgame/` 에서 열립니다.
+3. Branch: `main`, 폴더 `/ (root)` → Save
+4. 1~2분 뒤 `https://donymany2.github.io/ai-ethics-boardgame/` 에서 열립니다.
 
 ## 폴더 구조
 
